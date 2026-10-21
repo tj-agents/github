@@ -1,0 +1,6 @@
+{
+  "name": "github-agents",
+  "interface": {
+    "displayName": "GitHub"
+  }
+}

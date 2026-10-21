@@ -1,0 +1,27 @@
+{
+  "plugin": "github",
+  "dependencies": [],
+  "profiles": {
+    "core": [
+      "collaboration"
+    ]
+  },
+  "compatibilitySkillAliases": {},
+  "skills": [
+    {
+      "name": "collaboration",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "explicitly selected GitHub collaboration tasks"
+      ],
+      "requires": [
+        "python",
+        "gh"
+      ],
+      "provenance": [
+        "house"
+      ]
+    }
+  ]
+}

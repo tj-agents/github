@@ -1,0 +1,36 @@
+[project]
+name = "github"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+include = [".agents/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "BLE", "C4", "SIM", "PTH", "PIE", "RET", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+".agents/github/utility/collaboration/scripts/github_collaboration.py" = ["UP036"]
+
+[tool.mypy]
+mypy_path = [".agents/github/utility/collaboration/scripts"]
+strict = true
+warn_unreachable = true
+files = [".agents"]
+
+[tool.pytest]
+strict = true
+testpaths = [".agents/tests"]
+addopts = ["--import-mode=importlib", "-ra"]
+filterwarnings = ["error"]

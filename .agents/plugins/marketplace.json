@@ -1,0 +1,20 @@
+{
+  "name": "github-agents",
+  "interface": {
+    "displayName": "GitHub"
+  },
+  "plugins": [
+    {
+      "name": "github",
+      "source": {
+        "source": "local",
+        "path": "./plugins/github"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

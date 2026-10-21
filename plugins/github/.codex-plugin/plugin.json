@@ -1,0 +1,21 @@
+{
+  "name": "github",
+  "description": "Deterministic GitHub collaboration utilities for agent workflows.",
+  "author": {
+    "name": "Tommy Seery"
+  },
+  "repository": "https://github.com/tj-agents/github",
+  "skills": "./skills/",
+  "keywords": [
+    "github"
+  ],
+  "interface": {
+    "displayName": "GitHub",
+    "shortDescription": "Deterministic GitHub collaboration utilities for agent workflows.",
+    "longDescription": "Deterministic GitHub collaboration utilities for agent workflows. Follow the Template main branch and run template:update to refresh vendored files.",
+    "developerName": "Tommy Seery",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Show me what github can do."
+  }
+}

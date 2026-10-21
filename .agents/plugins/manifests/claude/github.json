@@ -1,0 +1,11 @@
+{
+  "name": "github",
+  "displayName": "GitHub",
+  "description": "Deterministic GitHub collaboration utilities for agent workflows.",
+  "author": {
+    "name": "Tommy Seery"
+  },
+  "repository": "https://github.com/tj-agents/github",
+  "skills": "./skills/",
+  "keywords": ["github"]
+}
