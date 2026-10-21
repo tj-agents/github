@@ -1,0 +1,18 @@
+{
+  "name": "github-agents",
+  "description": "Deterministic GitHub collaboration utilities for agent workflows.",
+  "owner": {
+    "name": "Tommy Seery"
+  },
+  "plugins": [
+    {
+      "name": "github",
+      "source": "./plugins/github",
+      "description": "Deterministic GitHub collaboration utilities for agent workflows.",
+      "category": "Productivity",
+      "keywords": [
+        "github"
+      ]
+    }
+  ]
+}
