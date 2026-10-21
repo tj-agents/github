@@ -35,10 +35,10 @@ on main with origin tj-agents/github. Plugin-repository, Python, GitHub Actions,
 personal development declarations were generated and their adoption check passed. Personal
 native instructions and policy CI were generated. uv.lock was resolved.
 
-GitHub App repository creation was rejected by both GraphQL createRepository and the documented
-REST POST /orgs/tj-agents/repos with permission errors. Do not switch to Tommy's saved account
-without an explicit exception to personal:bot-identity. Local implementation and validation
-continue while this remote boundary is unresolved.
+GitHub App creation was rejected. Tommy explicitly authorized the saved-account creation
+exception on 2026-10-21 ("lets upload it then? yep go"). The empty public tj-agents/github
+was created as tomjseery; all subsequent upload/API calls use the App. Bootstrap b2821d1
+was pushed and fetched origin/main matched the complete expected SHA.
 
 Local implementation is complete. Windows validation passed: 46 deterministic fixtures, ruff
 format/check, strict mypy (four source files), Template conformance, generation freshness,
@@ -47,17 +47,16 @@ PR #335 at fef9cf9656a70158a1f46550e9642c0f8e9ca523 through the source, generate
 generated Codex script paths; all returned the same head and 13 changed files. The Windows
 PowerShell generator wrapper passed. No live comment or review was posted.
 
-Linux CI is pending because the remote repository cannot yet be created; local WSL inventory
-has only docker-desktop, not a general Linux test environment. Fresh native Claude/Codex
-session loading and independent native review remain unverified under the no-additional-session
-restriction. Source checks and script-path execution do not establish installed-host acceptance.
+Producer CI run 39601500853 passed Windows/Linux repository checks and native host CLI
+marketplace acceptance for bootstrap b2821d1. A separate generated Personal caller failed
+because cached adoption predated its retirement. Current publisher e7d0db0 was inspected
+in isolation; its adoption write/check removed only that generated caller. Fresh actual
+Claude/Codex sessions and independent native review remain unverified under the existing
+no-additional-session restriction. CI CLI acceptance does not establish fresh session loading.
 
-Next: resolve remote creation, then push the checked local checkpoint and run producer CI
-before adding its marketplace entry. Remote creation resolver: Tommy can create
-an empty public tj-agents/github, or explicitly authorize a one-time creation using his saved
-gh account. Keep all subsequent eligible agent operations under the App identity. No live GitHub write or installed-host behavior is
-claimed by a fixture test. Required native independent review remains pending under the
-existing no-additional-session restriction.
+Next: publish the bounded adoption repair and verify exact-head producer CI; add the
+marketplace entry only after producer validation. No live comment/review write or installed
+session behavior is claimed by fixtures. Preserve independent native review as unverified.
 
 ## Acceptance
 
@@ -70,5 +69,5 @@ existing no-additional-session restriction.
 - Publication and any unverified entry point are reported truthfully.
 
 ```agent-host-coverage
-{"schema_version":1,"shared_source":".agents/github/utility/collaboration/SKILL.md","hosts":[{"host":"claude","behavior":"Invoke packaged deterministic GitHub collaboration utility","source":".agents/github/utility/collaboration/SKILL.md","mapping":".claude/skills/collaboration/SKILL.md and plugins/github","verification":{"level":"source","result":"passed","evidence":"46 Windows fixtures, strict checks and generated packaging passed; source and both generated script paths read Core PR 335 successfully. Fresh installed-host sessions and Linux CI remain pending."}},{"host":"codex","behavior":"Invoke packaged deterministic GitHub collaboration utility","source":".agents/github/utility/collaboration/SKILL.md","mapping":".codex/skills/collaboration/SKILL.md and plugins/github","verification":{"level":"source","result":"passed","evidence":"46 Windows fixtures, strict checks and generated packaging passed; source and both generated script paths read Core PR 335 successfully. Fresh installed-host sessions and Linux CI remain pending."}}]}
+{"schema_version":1,"shared_source":".agents/github/utility/collaboration/SKILL.md","hosts":[{"host":"claude","behavior":"Invoke packaged deterministic GitHub collaboration utility","source":".agents/github/utility/collaboration/SKILL.md","mapping":".claude/skills/collaboration/SKILL.md and plugins/github","verification":{"level":"source","result":"passed","evidence":"46 Windows fixtures, strict checks and generated packaging passed; source and both generated script paths read Core PR 335 successfully. Windows/Linux producer CI and native CLI marketplace acceptance passed; fresh installed-host sessions remain pending."}},{"host":"codex","behavior":"Invoke packaged deterministic GitHub collaboration utility","source":".agents/github/utility/collaboration/SKILL.md","mapping":".codex/skills/collaboration/SKILL.md and plugins/github","verification":{"level":"source","result":"passed","evidence":"46 Windows fixtures, strict checks and generated packaging passed; source and both generated script paths read Core PR 335 successfully. Windows/Linux producer CI and native CLI marketplace acceptance passed; fresh installed-host sessions remain pending."}}]}
 ```
