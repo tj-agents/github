@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "provider": "personal:work-item",
+  "backend": "github",
+  "repository": "tj-agents/github",
+  "issue_types": {
+    "feature": "Feature",
+    "task": "Task",
+    "bug": "Bug",
+    "mistake": "Task",
+    "debt": "Task"
+  }
+}

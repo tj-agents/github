@@ -1,5 +1,11 @@
 # General GitHub collaboration utilities
 
+<!-- BEGIN plan-tracker-migration -->
+Current work is tracked through the selected Personal GitHub provider. This document retains design, decisions and historical evidence. Recording does not change implementation authority or existing delivery ownership.
+
+- [Complete GitHub utilities marketplace publication and native qualification](https://github.com/tj-agents/github/issues/1)
+<!-- END plan-tracker-migration -->
+
 ## Authority and assessment
 
 Tommy authorized creation of tj-agents/github on 2026-10-21 for independently useful GitHub
