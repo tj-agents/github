@@ -43,8 +43,8 @@ MARKETPLACE_OUTPUTS = {
     "codex": ".agents/plugins/marketplace.json",
 }
 MARKETPLACE_FIELDS = {
-    "claude": {"name", "description", "owner"},
-    "codex": {"name", "interface"},
+    "claude": {"description", "owner"},
+    "codex": {"interface"},
 }
 CODEX_POLICY = {"installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL"}
 GENERATED_ROOTS = (
@@ -57,14 +57,15 @@ GENERATED_ROOTS = (
 )
 TIER_MATCHERS = ("files", "globs", "content", "remote")
 PAYLOAD_FIELDS = {"payloads", "dependencies", "compatibilitySkillAliases"}
-DEPENDENCY = re.compile(r"^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$")
+TJ_AGENTS_MARKETPLACE = "tj-agents"
+TJ_AGENTS_MARKETPLACE_REPOSITORY = "tj-agents/marketplace"
+DEPENDENCY = re.compile(rf"^{TJ_AGENTS_MARKETPLACE}/[a-z0-9][a-z0-9-]*$")
+CLAUDE_DEPENDENCY = re.compile(rf"^[a-z0-9][a-z0-9-]*(@{TJ_AGENTS_MARKETPLACE})?$")
 STACK_CORE_DEPENDENCIES = (
     "tj-agents/base",
     "tj-agents/engineering",
     "tj-agents/machine",
 )
-TJ_AGENTS_MARKETPLACE = "tj-agents"
-TJ_AGENTS_MARKETPLACE_REPOSITORY = "tj-agents/marketplace"
 
 type JSONObject = dict[str, Any]
 
@@ -351,7 +352,9 @@ def validate_payloads(payloads: JSONObject, plugins: Plugins) -> dict[str, str]:
                 )
             if need not in publications and not DEPENDENCY.fullmatch(need):
                 raise ValueError(
-                    f".agents/plugins/payloads.json: {plugin} cannot depend on {need}"
+                    f".agents/plugins/payloads.json: {plugin} cannot depend on "
+                    f"{need}; another repository's package is "
+                    f"{TJ_AGENTS_MARKETPLACE}/<package>"
                 )
     validate_local_dependency_cycles(dependencies, plugins)
     compatibility_aliases = payloads.get("compatibilitySkillAliases", {})
@@ -438,18 +441,14 @@ def effective_dependencies(
 
 
 def validate_publication_dependencies(
-    publications: dict[str, str], dependencies: Dependencies, marketplace: str
+    publications: dict[str, str], dependencies: Dependencies
 ) -> None:
     for source, needs in dependencies.items():
         for need in needs:
-            if "/" not in need:
-                continue
-            owner, package = need.split("/", 1)
-            if owner == marketplace and (
-                package not in publications or publications[package] == source
-            ):
+            if "/" in need and need.split("/", 1)[1] in publications:
                 raise ValueError(
-                    f".agents/plugins/payloads.json: {source} cannot depend on {need}"
+                    f".agents/plugins/payloads.json: {source} cannot depend on "
+                    f"{need}; name a package of this repository bare"
                 )
 
 
@@ -545,13 +544,9 @@ def load_manifests(
             expected_fields = sorted(MARKETPLACE_FIELDS[host])
             raise ValueError(
                 f"{MANIFEST_ROOT}/{host}/marketplace.json declares exactly "
-                f"{expected_fields}; its plugin entries are generated"
+                f"{expected_fields}; its {TJ_AGENTS_MARKETPLACE} name and plugin "
+                "entries are generated"
             )
-    if (
-        not NAME.fullmatch(str(templates["claude"]["name"]))
-        or templates["claude"]["name"] != templates["codex"]["name"]
-    ):
-        raise ValueError("Claude and Codex marketplaces must share one lowercase name")
     if not templates["codex"]["interface"].get("displayName") or not templates[
         "claude"
     ]["owner"].get("name"):
@@ -582,6 +577,15 @@ def load_manifests(
         for host in HOSTS:
             if "version" in manifests[host][plugin]:
                 raise ValueError(f"{plugin}: the {host} manifest must omit version")
+            needs = manifests[host][plugin].get("dependencies", [])
+            if not isinstance(needs, list) or not all(
+                isinstance(need, str) and CLAUDE_DEPENDENCY.fullmatch(need)
+                for need in needs
+            ):
+                raise ValueError(
+                    f"{plugin}: the {host} manifest dependencies are bare packages "
+                    f"of this repository or <package>@{TJ_AGENTS_MARKETPLACE}"
+                )
         interface = codex.get("interface") or {}
         if not claude.get("displayName") or claude["displayName"] != interface.get(
             "displayName"
@@ -724,7 +728,6 @@ def validate_file_references(
 def harness_body(
     root: Path,
     package: str,
-    marketplace: str,
     output: dict[str, bytes],
     dependencies: list[str],
     inherit_core: bool,
@@ -745,8 +748,9 @@ def harness_body(
         or manifest["schema_version"] != 1
     ):
         raise ValueError(f"{relative}: schema_version must be 1")
-    if manifest.get("plugin") != f"{marketplace}/{package}":
-        raise ValueError(f"{relative}: plugin must be {marketplace}/{package}")
+    identity = f"{TJ_AGENTS_MARKETPLACE}/{package}"
+    if manifest.get("plugin") != identity:
+        raise ValueError(f"{relative}: plugin must be {identity}")
     roots = manifest.get("source_roots")
     if (
         not isinstance(roots, list)
@@ -776,8 +780,6 @@ def harness_body(
             raise ValueError(
                 f"{relative}: source root {value!r} is not shipped in {package}"
             )
-    if not inherit_core:
-        return body
     requires = manifest.get("requires")
     if not isinstance(requires, dict):
         raise ValueError(f"{relative}: requires must be a JSON object")
@@ -786,22 +788,33 @@ def harness_body(
         isinstance(value, dict) for value in marketplaces
     ):
         raise ValueError(f"{relative}: requires.marketplaces must be a list of objects")
-    retained_marketplaces = [
-        value for value in marketplaces if value.get("id") != TJ_AGENTS_MARKETPLACE
-    ]
-    retained_marketplaces.append(
-        {"id": TJ_AGENTS_MARKETPLACE, "repository": TJ_AGENTS_MARKETPLACE_REPOSITORY}
-    )
+    listed = requires.get("plugins", [])
+    if not isinstance(listed, list) or not all(
+        isinstance(value, str) and DEPENDENCY.fullmatch(value) for value in listed
+    ):
+        raise ValueError(
+            f"{relative}: requires.plugins lists only "
+            f"{TJ_AGENTS_MARKETPLACE}/<package> identities"
+        )
     plugins = [
-        f"{marketplace}/{package}",
-        *(need if "/" in need else f"{marketplace}/{need}" for need in dependencies),
+        identity,
+        *([] if inherit_core else listed),
+        *(
+            need if "/" in need else f"{TJ_AGENTS_MARKETPLACE}/{need}"
+            for need in dependencies
+        ),
     ]
     return dump(
         {
             **manifest,
             "requires": {
                 **requires,
-                "marketplaces": retained_marketplaces,
+                "marketplaces": [
+                    {
+                        "id": TJ_AGENTS_MARKETPLACE,
+                        "repository": TJ_AGENTS_MARKETPLACE_REPOSITORY,
+                    }
+                ],
                 "plugins": list(dict.fromkeys(plugins)),
             },
         }
@@ -819,16 +832,6 @@ def claude_dependencies(dependencies: list[str]) -> list[str]:
     return result
 
 
-def dependency_marketplaces(dependencies: list[str], marketplace: str) -> list[str]:
-    return sorted(
-        {
-            dependency.split("/", 1)[0]
-            for dependency in dependencies
-            if "/" in dependency and dependency.split("/", 1)[0] != marketplace
-        }
-    )
-
-
 def build(root: Path) -> dict[str, bytes]:
     config = load_config(root)
     namespace, repository = config["namespace"], config["repository"]
@@ -840,9 +843,7 @@ def build(root: Path) -> dict[str, bytes]:
     validate_skill_references(plugins)
     aliases = payloads.get("compatibilitySkillAliases", {})
     dependencies = payloads.get("dependencies", {})
-    validate_publication_dependencies(
-        publications, dependencies, templates["claude"]["name"]
-    )
+    validate_publication_dependencies(publications, dependencies)
     single_plugin = len(plugins) == 1
 
     output: dict[str, bytes] = {}
@@ -947,7 +948,6 @@ def build(root: Path) -> dict[str, bytes]:
         harness = harness_body(
             root,
             package,
-            templates["claude"]["name"],
             output,
             effective,
             config["type"] in ("stack", "profile"),
@@ -982,22 +982,11 @@ def build(root: Path) -> dict[str, bytes]:
                 "category": category,
             }
         )
-    claude_marketplaces = dependency_marketplaces(
-        [
-            dependency
-            for source in publications.values()
-            for dependency in effective_dependencies(config, source, dependencies)
-        ],
-        templates["claude"]["name"],
-    )
-    claude_marketplace = {**templates["claude"], "plugins": claude_entries}
-    if config["type"] in ("stack", "profile") and claude_marketplaces:
-        claude_marketplace["allowCrossMarketplaceDependenciesOn"] = claude_marketplaces
-    emit(MARKETPLACE_OUTPUTS["claude"], dump(claude_marketplace))
-    emit(
-        MARKETPLACE_OUTPUTS["codex"],
-        dump({**templates["codex"], "plugins": codex_entries}),
-    )
+    for host, listed in (("claude", claude_entries), ("codex", codex_entries)):
+        emit(
+            MARKETPLACE_OUTPUTS[host],
+            dump({"name": TJ_AGENTS_MARKETPLACE, **templates[host], "plugins": listed}),
+        )
     validate_file_references(
         root, plugins, canonical_locations, adapter_locations, output
     )

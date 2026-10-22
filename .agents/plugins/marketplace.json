@@ -1,5 +1,5 @@
 {
-  "name": "github-agents",
+  "name": "tj-agents",
   "interface": {
     "displayName": "GitHub"
   },
