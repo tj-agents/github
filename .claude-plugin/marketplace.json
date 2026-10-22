@@ -1,5 +1,5 @@
 {
-  "name": "github-agents",
+  "name": "tj-agents",
   "description": "Deterministic GitHub collaboration utilities for agent workflows.",
   "owner": {
     "name": "Tommy Seery"

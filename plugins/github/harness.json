@@ -1,6 +1,24 @@
 {
   "schema_version": 1,
-  "plugin": "github-agents/github",
-  "source_roots": [".agents/github"],
-  "requires": {"marketplaces": [{"id": "github-agents", "repository": "tj-agents/github"}, {"id": "base-agents", "repository": "tj-agents/core"}], "plugins": ["github-agents/github", "base-agents/base"], "hooks": [], "permissions": {"claude_allow": [], "codex_prefix_rules": []}}
+  "plugin": "tj-agents/github",
+  "source_roots": [
+    ".agents/github"
+  ],
+  "requires": {
+    "marketplaces": [
+      {
+        "id": "tj-agents",
+        "repository": "tj-agents/marketplace"
+      }
+    ],
+    "plugins": [
+      "tj-agents/github",
+      "tj-agents/base"
+    ],
+    "hooks": [],
+    "permissions": {
+      "claude_allow": [],
+      "codex_prefix_rules": []
+    }
+  }
 }
