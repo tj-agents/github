@@ -3,11 +3,15 @@
 installable payloads."""
 
 import argparse
+import ast
+import hashlib
 import json
 import posixpath
 import re
 import shutil
 import stat
+import subprocess
+import tomllib
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from typing import Any, TypedDict
@@ -47,6 +51,17 @@ MARKETPLACE_FIELDS = {
     "codex": {"interface"},
 }
 CODEX_POLICY = {"installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL"}
+CODEX_HOOK_LOADER = ".codex/hooks/snapshot.py"
+CODEX_HOOK_BOOTSTRAP = ".codex/hooks/bootstrap.py"
+BOOTSTRAP_DIGEST = "LOADER_DIGEST"
+BOOTSTRAP_STATEMENTS = (ast.Import, ast.ImportFrom, ast.Assign, ast.Expr)
+COMMAND_UNSAFE = frozenset('"$`\\\n\r')
+HOST_ROOTS = (".claude", ".codex")
+RESOURCE_ROOTS = (".agents", *HOST_ROOTS)
+CODEX_HOOK_MANIFEST = "hooks/codex.json"
+CODEX_HOOK_PACKAGE_LOADER = "hooks/codex/snapshot.py"
+CODEX_WINDOWS_COMMAND_BUDGET = 8191
+WINDOWS_MAX_PATH = 260
 GENERATED_ROOTS = (
     ".claude/skills",
     ".codex/skills",
@@ -56,7 +71,14 @@ GENERATED_ROOTS = (
     ".agents/INDEX.md",
 )
 TIER_MATCHERS = ("files", "globs", "content", "remote")
-PAYLOAD_FIELDS = {"payloads", "dependencies", "compatibilitySkillAliases"}
+PAYLOAD_FIELDS = {
+    "payloads",
+    "dependencies",
+    "compatibilitySkillAliases",
+    "resources",
+    "host_adapters",
+}
+PLUGIN_RESOURCE_DIRS = {"runtime", "resources"}
 TJ_AGENTS_MARKETPLACE = "tj-agents"
 TJ_AGENTS_MARKETPLACE_REPOSITORY = "tj-agents/marketplace"
 DEPENDENCY = re.compile(rf"^{TJ_AGENTS_MARKETPLACE}/[a-z0-9][a-z0-9-]*$")
@@ -64,7 +86,6 @@ CLAUDE_DEPENDENCY = re.compile(rf"^[a-z0-9][a-z0-9-]*(@{TJ_AGENTS_MARKETPLACE})?
 STACK_CORE_DEPENDENCIES = (
     "tj-agents/base",
     "tj-agents/engineering",
-    "tj-agents/machine",
 )
 
 type JSONObject = dict[str, Any]
@@ -251,7 +272,69 @@ def collect_skills(
         collect_skills(root, plugin, kind, member, parts, namespace, skills)
 
 
-def discover(root: Path, namespace: str) -> Plugins:
+def resource_source_parts(source: str) -> tuple[str | None, str]:
+    path = PurePosixPath(source)
+    if (
+        "\\" in source
+        or ":" in source
+        or "\x00" in source
+        or path.is_absolute()
+        or ".." in path.parts
+        or path.as_posix() != source
+        or len(path.parts) < 2
+        or path.parts[0] not in RESOURCE_ROOTS
+    ):
+        raise ValueError(
+            f".agents/plugins/payloads.json: unsafe resource source {source!r}"
+        )
+    if path.parts[1] == "hooks":
+        return None, "hooks"
+    if path.parts[0] in HOST_ROOTS:
+        if path.parts[1] == "runtime":
+            return None, "runtime"
+        raise ValueError(
+            ".agents/plugins/payloads.json: a host resource source must be below "
+            f"{path.parts[0]}/hooks or {path.parts[0]}/runtime"
+        )
+    if len(path.parts) >= 3 and NAME.fullmatch(path.parts[1]):
+        return path.parts[1], path.parts[2]
+    raise ValueError(
+        ".agents/plugins/payloads.json: resource source must be .agents/hooks, "
+        ".claude/hooks, .claude/runtime, .codex/hooks, .codex/runtime or a path "
+        "below .agents/<plugin>"
+    )
+
+
+def mapped_resource_directories(payloads: Any) -> set[tuple[str, str]]:
+    if not isinstance(payloads, dict):
+        return set()
+    resources = payloads.get("resources", [])
+    if not isinstance(resources, list):
+        raise ValueError(".agents/plugins/payloads.json: resources must be a list")
+    mapped: set[tuple[str, str]] = set()
+    for resource in resources:
+        if isinstance(resource, dict) and set(resource) == {
+            "plugin",
+            "distribution",
+            "destination",
+        }:
+            continue
+        if not isinstance(resource, dict) or not isinstance(
+            resource.get("source"), str
+        ):
+            raise ValueError(
+                ".agents/plugins/payloads.json: each resource declares plugin, "
+                "source and destination"
+            )
+        owner, directory = resource_source_parts(resource["source"])
+        if owner is not None and directory in PLUGIN_RESOURCE_DIRS:
+            mapped.add((owner, directory))
+    return mapped
+
+
+def discover(
+    root: Path, namespace: str, mapped_resources: set[tuple[str, str]]
+) -> Plugins:
     agents = root / ".agents"
     plugins: Plugins = {}
     for plugin_dir in sorted(
@@ -268,6 +351,13 @@ def discover(root: Path, namespace: str) -> Plugins:
         for kind_dir in sorted(
             path for path in plugin_dir.iterdir() if not ignored(path)
         ):
+            if kind_dir.name in PLUGIN_RESOURCE_DIRS:
+                if (plugin, kind_dir.name) not in mapped_resources:
+                    raise ValueError(
+                        f".agents/{plugin}/{kind_dir.name}: non-skill resource "
+                        "directories must be declared in payloads resources"
+                    )
+                continue
             if not kind_dir.is_dir() or not NAME.fullmatch(kind_dir.name):
                 raise ValueError(
                     f".agents/{plugin}/{kind_dir.name}: only kind folders "
@@ -399,6 +489,373 @@ def validate_payloads(payloads: JSONObject, plugins: Plugins) -> dict[str, str]:
                     f"{plugin}:{alias}: an alias keeps its replacement's profile"
                 )
     return publications
+
+
+def safe_package_destination(destination: str) -> PurePosixPath:
+    path = PurePosixPath(destination)
+    if (
+        "\\" in destination
+        or ":" in destination
+        or "\x00" in destination
+        or path.is_absolute()
+        or not path.parts
+        or "." in path.parts
+        or ".." in path.parts
+        or path.as_posix() != destination
+    ):
+        raise ValueError(
+            ".agents/plugins/payloads.json: unsafe resource destination "
+            f"{destination!r}"
+        )
+    return path
+
+
+def checked_resource_path(root: Path, source: str) -> Path:
+    path = root.joinpath(*PurePosixPath(source).parts)
+    if not path.exists():
+        raise ValueError(
+            f".agents/plugins/payloads.json: resource source {source!r} is missing"
+        )
+    root_path = root.resolve()
+    current = root_path
+    for part in path.relative_to(root).parts:
+        current = current / part
+        if is_link_or_junction(current):
+            raise ValueError(
+                ".agents/plugins/payloads.json: resource source "
+                f"{source!r} contains a link or junction"
+            )
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root_path):
+        raise ValueError(
+            f".agents/plugins/payloads.json: resource source {source!r} escapes "
+            "the repository"
+        )
+    return path
+
+
+def resource_files(root: Path, source: str) -> list[Path]:
+    path = checked_resource_path(root, source)
+    if path.is_file():
+        return [path]
+    if not path.is_dir():
+        raise ValueError(
+            f".agents/plugins/payloads.json: resource source {source!r} is not a file "
+            "or directory"
+        )
+    files: list[Path] = []
+    for entry in sorted(path.rglob("*")):
+        if ignored(entry.relative_to(path)):
+            continue
+        if is_link_or_junction(entry):
+            raise ValueError(
+                ".agents/plugins/payloads.json: resource source "
+                f"{source!r} contains a link or junction"
+            )
+        if entry.is_file():
+            files.append(entry)
+    return files
+
+
+def validate_skill_asset_source(
+    root: Path, source: str, files: list[Path], skills: PluginSkills
+) -> None:
+    if not files:
+        raise ValueError(
+            ".agents/plugins/payloads.json: skill asset source must contain shipped "
+            "files"
+        )
+    assets = {
+        f"{skill['directory']}/{file}"
+        for skill in skills.values()
+        for file in skill["files"]
+    }
+    selected = {file.relative_to(root).as_posix() for file in files}
+    if not selected.issubset(assets):
+        raise ValueError(
+            ".agents/plugins/payloads.json: resource source must be a runtime, "
+            "resources, hooks or discovered skill asset path"
+        )
+
+
+def distribution_files(root: Path, name: str) -> list[tuple[Path, tuple[str, ...]]]:
+    """Read a locked, non-editable pure-Python dependency without importing it."""
+    if not NAME.fullmatch(name):
+        raise ValueError(f"Invalid Python distribution resource: {name!r}")
+    for filename in ("pyproject.toml", "uv.lock"):
+        path = root / filename
+        if not path.is_file() or is_link_or_junction(path):
+            raise ValueError(
+                f"Python distribution resources require a regular {filename}"
+            )
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    declared = {
+        re.sub(r"[-_.]+", "-", match[1]).lower()
+        for requirement in project.get("project", {}).get("dependencies", [])
+        if isinstance(requirement, str)
+        and (match := re.match(r"\s*([A-Za-z0-9][A-Za-z0-9_.-]*)", requirement))
+    }
+    if name not in declared:
+        raise ValueError(
+            f"Python distribution resource {name!r} is not a runtime dependency"
+        )
+    uv = shutil.which("uv")
+    if uv is None:
+        raise ValueError("uv is required to resolve Python distribution resources")
+    inspect = """import importlib.metadata, json, re, sys, sysconfig
+from pathlib import Path
+environment = str(Path(sys.executable).parent.parent)
+library = sysconfig.get_path('purelib', scheme='venv',
+    vars={'base': environment, 'platbase': environment})
+distribution = next(item for item in importlib.metadata.distributions(path=[library])
+    if re.sub(r'[-_.]+', '-', item.metadata['Name']).lower() == sys.argv[1])
+wheel = distribution.read_text('WHEEL') or ''
+print(json.dumps({'name': distribution.metadata['Name'],
+    'pure': 'Root-Is-Purelib: true' in wheel and 'Tag: py3-none-any' in wheel,
+    'root': str(distribution.locate_file('')),
+    'files': [str(path) for path in distribution.files or []]}))
+"""
+    try:
+        result = subprocess.run(
+            [
+                uv,
+                "run",
+                "--locked",
+                "--no-editable",
+                "--project",
+                str(root),
+                "python",
+                "-I",
+                "-S",
+                "-B",
+                "-c",
+                inspect,
+                name,
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            check=True,
+        )
+        metadata = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise ValueError(
+            f"Cannot resolve locked Python distribution {name!r}: {error}"
+        ) from error
+    if not isinstance(metadata, dict) or metadata.get("pure") is not True:
+        raise ValueError(
+            f"Python distribution resource {name!r} must be a pure Python wheel"
+        )
+    if re.sub(r"[-_.]+", "-", str(metadata.get("name", ""))).lower() != name:
+        raise ValueError(
+            f"Resolved Python distribution identity does not match {name!r}"
+        )
+    base = metadata.get("root")
+    records = metadata.get("files")
+    if (
+        not isinstance(base, str)
+        or not Path(base).is_absolute()
+        or not isinstance(records, list)
+    ):
+        raise ValueError(f"Invalid installed Python distribution metadata for {name!r}")
+    directory = Path(base)
+    resolved_directory = directory.resolve(strict=True)
+    files: list[tuple[Path, tuple[str, ...]]] = []
+    seen: set[str] = set()
+    for record in records:
+        if not isinstance(record, str):
+            raise ValueError(f"Invalid Python distribution record for {name!r}")
+        relative = PurePosixPath(record)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or "\\" in record
+            or ":" in record
+            or "\x00" in record
+            or relative.as_posix() != record
+        ):
+            raise ValueError(f"Unsafe Python distribution record: {record!r}")
+        if ignored(relative):
+            continue
+        if any(
+            part.endswith(".dist-info") for part in relative.parts
+        ) and relative.name in {
+            "INSTALLER",
+            "REQUESTED",
+            "RECORD",
+            "RECORD.jws",
+            "RECORD.p7s",
+            "direct_url.json",
+            "uv_cache.json",
+        }:
+            continue
+        if relative.suffix == ".pth":
+            raise ValueError(
+                "Python distribution resources cannot require .pth import hooks"
+            )
+        source = directory.joinpath(*relative.parts)
+        current = source
+        while current != directory:
+            if is_link_or_junction(current):
+                raise ValueError(f"Linked Python distribution resource: {record!r}")
+            current = current.parent
+        if not source.is_file() or not source.resolve(strict=True).is_relative_to(
+            resolved_directory
+        ):
+            raise ValueError(
+                f"Missing or escaped Python distribution resource: {record!r}"
+            )
+        if record in seen:
+            raise ValueError(f"Duplicate Python distribution record: {record!r}")
+        seen.add(record)
+        files.append((source, relative.parts))
+    if not files:
+        raise ValueError(f"Python distribution resource {name!r} is empty")
+    return sorted(files, key=lambda item: item[1])
+
+
+def validate_resources(
+    root: Path,
+    payloads: JSONObject,
+    publications: dict[str, str],
+    plugins: Plugins,
+) -> dict[str, list[tuple[Path, str]]]:
+    resources = payloads.get("resources", [])
+    if not isinstance(resources, list):
+        raise ValueError(".agents/plugins/payloads.json: resources must be a list")
+    mapped: dict[str, list[tuple[Path, str]]] = {}
+    destinations: set[str] = set()
+    distributions: dict[str, list[tuple[Path, tuple[str, ...]]]] = {}
+    for resource in resources:
+        if not isinstance(resource, dict) or set(resource) not in (
+            {"plugin", "source", "destination"},
+            {"plugin", "distribution", "destination"},
+        ):
+            raise ValueError(
+                ".agents/plugins/payloads.json: each resource declares exactly "
+                "plugin, destination and either source or distribution"
+            )
+        package, destination = (
+            resource["plugin"],
+            resource["destination"],
+        )
+        if not isinstance(package, str) or package not in publications:
+            raise ValueError(
+                ".agents/plugins/payloads.json: resource plugin must be a declared "
+                "package"
+            )
+        if not isinstance(destination, str):
+            raise ValueError(
+                ".agents/plugins/payloads.json: each resource declares string "
+                "plugin, source and destination"
+            )
+        target = safe_package_destination(destination)
+        if "distribution" in resource:
+            name = resource["distribution"]
+            if not isinstance(name, str):
+                raise ValueError(
+                    "A Python distribution resource requires a distribution name"
+                )
+            if name not in distributions:
+                distributions[name] = distribution_files(root, name)
+            selected = distributions[name]
+        else:
+            source = resource["source"]
+            if not isinstance(source, str):
+                raise ValueError("A file resource requires a string source")
+            owner, directory = resource_source_parts(source)
+            if owner is not None and owner not in plugins:
+                raise ValueError(
+                    ".agents/plugins/payloads.json: resource source must name a "
+                    "declared canonical plugin"
+                )
+            source_path = checked_resource_path(root, source)
+            files = resource_files(root, source)
+            if owner is not None and directory not in PLUGIN_RESOURCE_DIRS:
+                validate_skill_asset_source(root, source, files, plugins[owner])
+            selected = [
+                (
+                    file,
+                    ()
+                    if source_path.is_file()
+                    else file.relative_to(source_path).parts,
+                )
+                for file in files
+            ]
+        for file, suffix in selected:
+            generated = PurePosixPath(
+                "plugins", package, *target.parts, *suffix
+            ).as_posix()
+            if generated in destinations:
+                raise ValueError(
+                    ".agents/plugins/payloads.json: duplicate resource output "
+                    f"{generated}"
+                )
+            destinations.add(generated)
+            mapped.setdefault(package, []).append((file, generated))
+    return mapped
+
+
+def validate_host_adapters(
+    root: Path, payloads: JSONObject, plugins: Plugins
+) -> dict[tuple[str, str, str], str]:
+    adapters = payloads.get("host_adapters", [])
+    if not isinstance(adapters, list):
+        raise ValueError(".agents/plugins/payloads.json: host_adapters must be a list")
+    result: dict[tuple[str, str, str], str] = {}
+    for adapter in adapters:
+        if not isinstance(adapter, dict) or set(adapter) != {"skill", "host", "source"}:
+            raise ValueError(
+                ".agents/plugins/payloads.json: each host adapter declares exactly "
+                "skill, host and source"
+            )
+        qualified, host, source = (
+            adapter["skill"],
+            adapter["host"],
+            adapter["source"],
+        )
+        if not isinstance(qualified, str) or ":" not in qualified:
+            raise ValueError(
+                ".agents/plugins/payloads.json: host adapter skill must be plugin:name"
+            )
+        plugin, name = qualified.split(":", 1)
+        if plugin not in plugins or name not in plugins[plugin]:
+            raise ValueError(
+                ".agents/plugins/payloads.json: host adapter skill must name an "
+                "existing canonical skill"
+            )
+        if host not in HOSTS or not isinstance(source, str):
+            raise ValueError(
+                ".agents/plugins/payloads.json: host adapter host must be claude or "
+                "codex with a string source"
+            )
+        expected = f".agents/plugins/adapters/{host}/{plugin}/{name}.md"
+        if source != expected:
+            raise ValueError(
+                f".agents/plugins/payloads.json: host adapter source must be {expected}"
+            )
+        key = (plugin, name, host)
+        if key in result:
+            raise ValueError(
+                ".agents/plugins/payloads.json: duplicate host adapter for "
+                f"{qualified} on {host}"
+            )
+        path = checked_resource_path(root, source)
+        if not path.is_file():
+            raise ValueError(
+                ".agents/plugins/payloads.json: host adapter source "
+                f"{source!r} is not a file"
+            )
+        body = read(path)
+        if not body.strip() or body.startswith("---\n"):
+            raise ValueError(
+                ".agents/plugins/payloads.json: host adapter source must be a "
+                "nonempty extension body, not a canonical skill"
+            )
+        result[key] = body
+    return result
 
 
 def validate_local_dependency_cycles(
@@ -692,7 +1149,7 @@ def validate_file_references(
                         f"{label}: {target} does not resolve from generated "
                         f"{shipped_dir}"
                     )
-            if source_exists and not (root / source).exists():
+            if source_exists and not (root / source).exists() and not present(shipped):
                 raise ValueError(
                     f"{label}: {target} does not resolve from {source_dir}"
                 )
@@ -832,12 +1289,117 @@ def claude_dependencies(dependencies: list[str]) -> list[str]:
     return result
 
 
+def canonical_text(data: bytes) -> bytes:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data
+    return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+def package_digest(output: dict[str, bytes], package: str) -> str:
+    prefix = f"plugins/{package}/"
+    digest = hashlib.sha256()
+    for path in sorted(output):
+        relative = path.removeprefix(prefix)
+        if relative in (path, CODEX_HOOK_MANIFEST):
+            continue
+        content = canonical_text(output[path])
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(len(content)).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(content)
+    return "sha256:" + digest.hexdigest()
+
+
+class LoaderDigest(ast.NodeTransformer):
+    def __init__(self, digest: str) -> None:
+        self.digest = digest
+
+    def visit_Name(self, node: ast.Name) -> ast.expr:
+        if node.id == BOOTSTRAP_DIGEST:
+            return ast.Constant(self.digest)
+        return node
+
+
+def codex_snapshot_bootstrap(root: Path, loader: bytes) -> str:
+    tree = ast.parse((root / CODEX_HOOK_BOOTSTRAP).read_text(encoding="utf-8"))
+    for statement in tree.body:
+        if not isinstance(statement, BOOTSTRAP_STATEMENTS):
+            raise ValueError(
+                f"{CODEX_HOOK_BOOTSTRAP}:{statement.lineno}: only simple statements "
+                "fit one command line"
+            )
+    tree = LoaderDigest(hashlib.sha256(loader).hexdigest()).visit(tree)
+    command = ";".join(ast.unparse(statement) for statement in tree.body)
+    unsafe = sorted({character for character in command if character in COMMAND_UNSAFE})
+    if unsafe:
+        raise ValueError(f"{CODEX_HOOK_BOOTSTRAP} compiles to unsafe {unsafe}")
+    return command
+
+
+def snapshot_command(command: str, prefix: str, wrapped: str, field: str) -> str:
+    if not command.startswith(prefix + '"${PLUGIN_ROOT}/'):
+        raise ValueError(f"Unsupported Codex hook {field}: {command}")
+    return wrapped + command.removeprefix(prefix)
+
+
+def bind_codex_hook_snapshots(
+    root: Path, output: dict[str, bytes], packages: list[str]
+) -> None:
+    hooked = [
+        package
+        for package in packages
+        if f"plugins/{package}/{CODEX_HOOK_MANIFEST}" in output
+    ]
+    if not hooked:
+        return
+    loader = canonical_text((root / CODEX_HOOK_LOADER).read_bytes())
+    bootstrap = codex_snapshot_bootstrap(root, loader)
+    for package in hooked:
+        manifest = f"plugins/{package}/{CODEX_HOOK_MANIFEST}"
+        output[f"plugins/{package}/{CODEX_HOOK_PACKAGE_LOADER}"] = loader
+        expected = package_digest(output, package)
+        root_argument = '"${PLUGIN_ROOT}"'
+        arguments = f'-c "{bootstrap}" {root_argument} "{expected}" "{package}" '
+        payload = json.loads(output[manifest])
+        for groups in payload["hooks"].values():
+            for group in groups:
+                for hook in group["hooks"]:
+                    hook["command"] = snapshot_command(
+                        hook["command"],
+                        "python3 -B ",
+                        "python3 -I -B " + arguments,
+                        "command",
+                    )
+                    windows = snapshot_command(
+                        hook["commandWindows"],
+                        "python -B ",
+                        "python -I -B " + arguments,
+                        "commandWindows",
+                    )
+                    expanded = len(windows) + windows.count("${PLUGIN_ROOT}") * (
+                        WINDOWS_MAX_PATH - len("${PLUGIN_ROOT}")
+                    )
+                    if expanded > CODEX_WINDOWS_COMMAND_BUDGET:
+                        raise ValueError(
+                            f"{package}: Codex commandWindows exceeds the "
+                            f"{CODEX_WINDOWS_COMMAND_BUDGET}-character cmd.exe budget "
+                            "once ${PLUGIN_ROOT} expands"
+                        )
+                    hook["commandWindows"] = windows
+        output[manifest] = dump(payload).encode("utf-8")
+
+
 def build(root: Path) -> dict[str, bytes]:
     config = load_config(root)
     namespace, repository = config["namespace"], config["repository"]
-    plugins = discover(root, namespace)
     payloads = load(root / ".agents/plugins/payloads.json")
+    plugins = discover(root, namespace, mapped_resource_directories(payloads))
     publications = validate_payloads(payloads, plugins)
+    resources = validate_resources(root, payloads, publications, plugins)
+    host_adapters = validate_host_adapters(root, payloads, plugins)
     validate_tiers(root, plugins, repository)
     manifests, templates = load_manifests(root, publications, repository)
     validate_skill_references(plugins)
@@ -845,14 +1407,21 @@ def build(root: Path) -> dict[str, bytes]:
     dependencies = payloads.get("dependencies", {})
     validate_publication_dependencies(publications, dependencies)
     single_plugin = len(plugins) == 1
+    plugins_with_host_adapters = {plugin for plugin, _, _ in host_adapters}
 
     output: dict[str, bytes] = {}
     canonical_locations: dict[tuple[str, str], list[str]] = {}
     adapter_locations: list[tuple[SkillRecord, str, str, bool, bool]] = []
+    mirrored_resources: set[tuple[Path, str]] = set()
 
     def emit(relative: str, data: str | bytes) -> None:
         key = PurePosixPath(relative).as_posix()
-        if key in output:
+        if any(
+            key == existing
+            or key.startswith(existing + "/")
+            or existing.startswith(key + "/")
+            for existing in output
+        ):
             raise ValueError(f"Duplicate generated output: {key}")
         output[key] = data.encode("utf-8") if isinstance(data, str) else data
 
@@ -872,9 +1441,12 @@ def build(root: Path) -> dict[str, bytes]:
     for source, skills in plugins.items():
         ordered = sorted(skills.values(), key=lambda item: (item["kind"], item["name"]))
         for skill in ordered:
-            for adapter_root in ADAPTER_ROOTS.values():
+            for host, adapter_root in ADAPTER_ROOTS.items():
                 adapter_dir = f"{adapter_root}/{adapter_name(skill, single_plugin)}"
                 host_adapter = adapter_body(skill, adapter_dir)
+                extension = host_adapters.get((source, skill["name"], host))
+                if extension is not None:
+                    host_adapter += "\n" + extension.rstrip() + "\n"
                 emit_skill(adapter_dir, skill, host_adapter)
                 adapter_locations.append(
                     (skill, host_adapter, adapter_dir, True, False)
@@ -899,6 +1471,9 @@ def build(root: Path) -> dict[str, bytes]:
             canonical_dir = f"plugins/{package}/{skill['directory']}"
             package_adapter_dir = f"plugins/{package}/skills/{skill['name']}"
             package_adapter = adapter_body(skill, package_adapter_dir, canonical_dir)
+            claude_extension = host_adapters.get((source, skill["name"], "claude"))
+            if claude_extension is not None:
+                package_adapter += "\n" + claude_extension.rstrip() + "\n"
             emit_skill(canonical_dir, skill, skill["body"])
             emit_skill(package_adapter_dir, skill, package_adapter)
             canonical_locations.setdefault((source, skill["name"]), []).append(
@@ -907,6 +1482,35 @@ def build(root: Path) -> dict[str, bytes]:
             adapter_locations.append(
                 (skill, package_adapter, package_adapter_dir, False, True)
             )
+            if source in plugins_with_host_adapters:
+                codex_adapter_dir = f"plugins/{package}/codex-skills/{skill['name']}"
+                codex_adapter = adapter_body(skill, codex_adapter_dir, canonical_dir)
+                codex_extension = host_adapters.get((source, skill["name"], "codex"))
+                if codex_extension is not None:
+                    codex_adapter += "\n" + codex_extension.rstrip() + "\n"
+                emit_skill(codex_adapter_dir, skill, codex_adapter)
+                adapter_locations.append(
+                    (skill, codex_adapter, codex_adapter_dir, False, True)
+                )
+
+        for source_file, destination in resources.get(package, []):
+            data = source_file.read_bytes()
+            emit(destination, data)
+            relative = PurePosixPath(destination).relative_to(f"plugins/{package}")
+            if len(relative.parts) < 3 or relative.parts[0] != "skills":
+                continue
+            skill_name = relative.parts[1]
+            if skill_name not in skills:
+                continue
+            skill = skills[skill_name]
+            suffix = PurePosixPath(*relative.parts[2:]).as_posix()
+            for adapter_root in ADAPTER_ROOTS.values():
+                target = f"{adapter_root}/{adapter_name(skill, single_plugin)}/{suffix}"
+                if (source_file, target) not in mirrored_resources:
+                    emit(target, data)
+                    mirrored_resources.add((source_file, target))
+            if source in plugins_with_host_adapters:
+                emit(f"plugins/{package}/codex-skills/{skill_name}/{suffix}", data)
 
         entries = [
             f"- `{skill['name']}` — {skill['kind']} — {skill['metadata']['profile']}"
@@ -958,8 +1562,11 @@ def build(root: Path) -> dict[str, bytes]:
             manifest = manifests[host][package]
             if host == "claude" and config["type"] in ("stack", "profile"):
                 manifest = {**manifest, "dependencies": claude_dependencies(effective)}
+            if host == "codex" and source in plugins_with_host_adapters:
+                manifest = {**manifest, "skills": "./codex-skills/"}
             emit(f"plugins/{package}/.{host}-plugin/plugin.json", dump(manifest))
 
+    bind_codex_hook_snapshots(root, output, list(publications))
     emit(".agents/INDEX.md", "\n".join(repository_index))
     claude_entries, codex_entries = [], []
     for package in publications:
