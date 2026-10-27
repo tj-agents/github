@@ -7,10 +7,11 @@
   },
   "plugins": [
     "agent-store@tj-agents",
+    "agent@tj-agents",
     "base@tj-agents",
+    "cli@tj-agents",
     "engineering@tj-agents",
     "github-actions@tj-agents",
-    "machine@tj-agents",
     "personal@tj-agents",
     "python@tj-agents",
     "template@tj-agents",
