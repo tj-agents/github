@@ -23,27 +23,28 @@ because the guidance-example check rejects it.
 
 Every skill here is a `utility`. Its scripts and templates sit beside its `SKILL.md`.
 
-<!-- BEGIN personal:current-solution sha256:2e091b5f18f67fb2302024e817c71d4a0f5234c1ca63ca1c9af5c4eef3b6a128 -->
-# Personal projects
+<!-- BEGIN personal:rules sha256:eee7a719bb90e67aaa81ac101a45836dd099bc745fee61216c99ec7d6075f12d -->
+# Personal rules
 
-These rules are mandatory in projects that explicitly adopt `personal@tj-agents`. Adoption records the
-project's personal scope; a home directory, author name or employer association never establishes it.
-Employer projects remain outside this profile unless Tommy explicitly changes that scope.
+These rules govern every project that explicitly adopts `personal@tj-agents`. Adoption records the
+project's personal scope; a home directory, author name or employer association never establishes it, and
+employer projects stay outside this profile unless the user explicitly extends that scope. Before planning
+or starting work, confirm the task is clear against each rule below.
+
+## 1. Clean cut
 
 Keep one current supported solution. When replacing behavior, remove the superseded names, aliases,
-fallback implementations, adapters, configuration formats and compatibility branches. Coordinate and
-migrate all known callers, project declarations, installed registrations, generated artifacts and live
-runtime entry points in the same cutover. Do not retain obsolete behavior for hypothetical external users;
-coordinate upgrades with the actual collaborating developers.
+fallback implementations, adapters, configuration formats, compatibility branches and forwarding or
+migration docs. Migrate all known callers, project declarations, installed registrations, generated
+artifacts and live runtime entry points in the same cutover, and coordinate upgrades with the actual
+collaborating developers. Run each migration once during the cutover and delete it; never ship migration
+or cleanup code that runs again later. CI fails a commit that removes or renames a skill while a tracked source
+still names its old `<package>:<name>`.
 
 Verify the entry points people actually use on every supported platform, including Windows and Linux
 launch paths where supported. Source edits, successful generation, passing unit tests and version commands
-alone do not prove that a migration is complete. Check installed bindings and fresh runtime behavior.
-Record any unverified entry point as incomplete, with its resolver and observable acceptance condition.
-
-For example, replacing `old-launch` with `launch` means migrating the registered shell command, project
-configuration and actual callers, deleting the old entry, then invoking `launch` from a fresh session on
-each supported OS. Running `launch --version` alone leaves the cutover unverified.
+alone leave a migration unproven; check installed bindings and fresh runtime behavior. Record any
+unverified entry point as incomplete, with its resolver and observable acceptance condition.
 
 ```text
 Replace old-launch with launch:
@@ -53,15 +54,23 @@ Replace old-launch with launch:
 Result: launch --version alone leaves this migration incomplete.
 ```
 
-Do not independently add a backwards-compatibility exception. Surface an explicit contrary user requirement
-as a deliberate policy decision, identify the affected supported behavior and reconcile this profile's
-scope before implementing it. Never hide an exception in a fallback or adapter.
+A backwards-compatibility exception exists only as an explicit user requirement. Surface it as a
+deliberate policy decision, identify the affected supported behavior and reconcile this profile's scope
+before implementing it, keeping the exception visible rather than inside a fallback or adapter.
+
+## 2. Proportionate implementation
 
 Solve the demonstrated problem with the smallest suitable implementation. Add abstractions, dependencies,
 configuration switches, duplicate paths or process machinery only for a concrete current need. Prefer the
 capabilities the project already selects. Verify the behavior and meaningful failure paths in proportion
-to the change; do not add tests that merely repeat the implementation or a checklist with no concrete benefit.
+to the change, with tests that prove behavior rather than restate the implementation.
 
-This policy is authored once here. Personal adoption generates its marked native instruction block from
-this body and checks it for drift. A selected plugin or an `always` tier alone is not proof of loading.
-<!-- END personal:current-solution -->
+## 3. Plans
+
+Track work as a GitHub issue or project item. A plan committed under `plans/` is only the detailed
+implementation plan behind one such item and links to it; working plans stay machine-local.
+
+This policy is authored once here. A selecting project receives it at SessionStart, and adoption generates
+its marked native instruction block from this body and checks it for drift. A selected plugin or an
+`always` tier alone is not proof of loading.
+<!-- END personal:rules -->
