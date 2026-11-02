@@ -1,13 +1,33 @@
 {
   "plugin": "github",
-  "dependencies": [],
+  "dependencies": [
+    "tj-agents/engineering"
+  ],
   "profiles": {
     "core": [
-      "collaboration"
+      "address-work-item",
+      "collaboration",
+      "create-work-item",
+      "work-item"
     ]
   },
   "compatibilitySkillAliases": {},
   "skills": [
+    {
+      "name": "address-work-item",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "repositories selecting the GitHub work-item provider"
+      ],
+      "requires": [
+        "engineering",
+        "python"
+      ],
+      "provenance": [
+        "house"
+      ]
+    },
     {
       "name": "collaboration",
       "kind": "utility",
@@ -18,6 +38,36 @@
       "requires": [
         "python",
         "gh"
+      ],
+      "provenance": [
+        "house"
+      ]
+    },
+    {
+      "name": "create-work-item",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "repositories selecting the GitHub work-item provider"
+      ],
+      "requires": [
+        "engineering",
+        "python"
+      ],
+      "provenance": [
+        "house"
+      ]
+    },
+    {
+      "name": "work-item",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "repositories selecting the GitHub work-item provider"
+      ],
+      "requires": [
+        "engineering",
+        "python"
       ],
       "provenance": [
         "house"

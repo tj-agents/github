@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "feature work item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "title",
+    "summary",
+    "outcome",
+    "scope",
+    "acceptance"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "feature",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "legacy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "title": "Desired outcome",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "scope": {
+      "type": "string",
+      "title": "Scope",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "acceptance": {
+      "type": "string",
+      "title": "Acceptance criteria",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    }
+  }
+}

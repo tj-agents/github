@@ -13,7 +13,7 @@
     ],
     "plugins": [
       "tj-agents/github",
-      "tj-agents/base"
+      "tj-agents/engineering"
     ],
     "hooks": [],
     "permissions": {
