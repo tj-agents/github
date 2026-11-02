@@ -21,9 +21,11 @@ opening, then use a concrete fenced example before additional explanatory prose 
 starter's explicit unfinished placeholder is not an example, so replace it with real behaviour before committing
 because the guidance-example check rejects it.
 
-Every skill here is a `utility`. Its scripts and templates sit beside its `SKILL.md`.
+GitHub owns tracker mechanics and collaboration utilities. Work-item addressing is a workflow that
+selects the existing Engineering operation; source policy and authority remain with the caller.
+Executable helpers live under each owning skill's `scripts/` directory.
 
-<!-- BEGIN personal:rules sha256:eee7a719bb90e67aaa81ac101a45836dd099bc745fee61216c99ec7d6075f12d -->
+<!-- BEGIN personal:rules sha256:26dbfd6ffce2eb723026177f422fa84b5e4f9a14c72fca63511bbddc5e0b1ea9 -->
 # Personal rules
 
 These rules govern every project that explicitly adopts `personal@tj-agents`. Adoption records the
@@ -65,7 +67,14 @@ configuration switches, duplicate paths or process machinery only for a concrete
 capabilities the project already selects. Verify the behavior and meaningful failure paths in proportion
 to the change, with tests that prove behavior rather than restate the implementation.
 
-## 3. Plans
+## 3. Work items and progress
+
+When authorized work starts or materially changes state, resolve the installed `personal:rules` skill
+and load its `resources/work-items.md`. The [work-item policy](https://github.com/tj-agents/personal/blob/main/.agents/personal/policy/rules/resources/work-items.md)
+is authored once there and is the bounded import for a source item observed in a different repository;
+loading it does not apply Personal's other rules to the observing task.
+
+## 4. Plans
 
 Track work as a GitHub issue or project item. A plan committed under `plans/` is only the detailed
 implementation plan behind one such item and links to it; working plans stay machine-local.

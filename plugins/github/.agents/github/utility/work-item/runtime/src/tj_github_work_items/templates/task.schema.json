@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task work item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "title",
+    "summary",
+    "action",
+    "done_when"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "task",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "legacy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "action": {
+      "type": "string",
+      "title": "Action",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "done_when": {
+      "type": "string",
+      "title": "Done when",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    }
+  }
+}

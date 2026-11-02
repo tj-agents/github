@@ -24,7 +24,11 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "A", "BLE", "C4", "SIM", "PTH", "P
 ".agents/github/utility/collaboration/scripts/github_collaboration.py" = ["UP036"]
 
 [tool.mypy]
-mypy_path = [".agents/github/utility/collaboration/scripts"]
+mypy_path = [
+    ".agents/github/utility/collaboration/scripts",
+    ".agents/github/utility/work-item/scripts",
+    ".agents/github/utility/work-item/runtime/src",
+]
 strict = true
 warn_unreachable = true
 files = [".agents"]

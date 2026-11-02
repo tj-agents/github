@@ -1,0 +1,13 @@
+[project]
+name = "tj-github-work-items"
+version = "0.1.0"
+description = "Deterministic GitHub work-item runtime"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "tj_github_work_items"

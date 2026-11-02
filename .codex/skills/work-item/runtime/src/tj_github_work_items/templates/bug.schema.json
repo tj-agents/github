@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "bug work item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "title",
+    "summary",
+    "expected",
+    "actual",
+    "evidence",
+    "impact",
+    "resolution"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "bug",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "legacy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected": {
+      "type": "string",
+      "title": "Expected behavior",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "actual": {
+      "type": "string",
+      "title": "Actual behavior",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "evidence": {
+      "type": "string",
+      "title": "Reproduction or evidence",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "impact": {
+      "type": "string",
+      "title": "Impact",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "resolution": {
+      "type": "string",
+      "title": "Resolution condition",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "observed": {
+      "type": "string",
+      "title": "Observed or reported",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "cause": {
+      "type": "string",
+      "title": "Cause and evidence",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "source_owner": {
+      "type": "string",
+      "title": "Causal source owner",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "state": {
+      "type": "string",
+      "title": "Problem state",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536,
+      "enum": [
+        "open",
+        "in-progress",
+        "blocked",
+        "deferred",
+        "resolved"
+      ]
+    },
+    "repair": {
+      "type": "string",
+      "title": "Canonical repair",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "next_action": {
+      "type": "string",
+      "title": "Next action",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "verification": {
+      "type": "string",
+      "title": "Verification evidence",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "blocked_by": {
+      "type": "string",
+      "title": "Blocker class",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536,
+      "enum": [
+        "capability",
+        "dependency",
+        "conflict",
+        "capacity"
+      ]
+    },
+    "resolver": {
+      "type": "string",
+      "title": "Resolver",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "resume_condition": {
+      "type": "string",
+      "title": "Observable resume condition",
+      "minLength": 1,
+      "pattern": "\\S",
+      "maxLength": 65536
+    },
+    "handoff_disposition": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Typed Core disposition transported as one deterministic agent-handoff-disposition fence; Core owns semantic handling."
+    }
+  }
+}
