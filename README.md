@@ -1,6 +1,6 @@
 # GitHub
 
-Deterministic GitHub collaboration utilities for agent workflows, usable by personal and work
+Deterministic GitHub collaboration and work-item operations for agent workflows, usable by personal and work
 projects. Project policy and user authorization remain with the caller.
 
 The first utility, `github:collaboration`, reads compact issue/PR context, posts top-level
@@ -14,10 +14,29 @@ python -B .agents/github/utility/collaboration/scripts/github_collaboration.py -
 See the [request examples and behavior](.agents/github/utility/collaboration/SKILL.md).
 Use `python3` on Linux. Both hosts receive the same generated skill and shipped script.
 
-This package owns GitHub interaction mechanics. Core owns engineering review and delivery;
-work-items owns record semantics; github-actions owns CI workflow standards and generators.
-Selecting this utility does not automatically adopt personal policy, change repository settings,
+This package owns GitHub interaction mechanics and managed work-item records. Core owns Workflow and
+Engineering; Personal owns automatic recording and progress policy for explicitly adopted projects;
+github-actions owns CI workflow standards and generators.
+Selecting these operations does not automatically adopt personal policy, change repository settings,
 or grant posting authority. It does not replace the complete gh CLI.
+
+## Work items
+
+`github:work-item` inspects records, `github:create-work-item` records or adds recurrence evidence,
+and `github:address-work-item` reconciles authorized execution and factual progress with its existing
+owner. Features, stories, tasks, bugs, mistakes and debt share one runtime and request journal.
+
+The affected source repository's primary checkout selects the provider: an explicit
+`.problem-records.json` naming `github:work-item`, or its existing Personal adoption default. The
+observing repository supplies neither that selection nor recording authority. Workflow resolves the
+source policy separately, including its bounded recording resource when observation crosses projects.
+
+Creation places the issue on repository and owner boards. Progress records factual evidence and updates
+both boards to an exact existing Status option, then verifies readback. Closure requires acceptance
+evidence and a verified closed issue before both boards become Done. Missing options or partial failures
+leave the operation incomplete against the same issue; retries preserve its request ID and receipts.
+The authenticated `gh` identity needs project access for board operations. No operation installs or
+configures credentials.
 
 ## Development
 
