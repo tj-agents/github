@@ -54,9 +54,13 @@ def managed_issue(
 
 
 def read_local(
-    issue: dict[str, str], compact: dict[str, str], reference: str = URL
+    issue: dict[str, str],
+    compact: dict[str, str],
+    reference: str = URL,
+    repository: str = "owner/project",
 ) -> dict[str, str]:
     tracker = LocalTracker(issue, compact)
+    tracker.repo = repository
     api = object()
     with (
         patch.object(reader, "selection", return_value=CONFIG) as selected,
@@ -87,6 +91,22 @@ def test_reader_rejects_feature_records() -> None:
         read_local(issue, compact)
 
 
+@pytest.mark.parametrize(
+    ("repository", "reference"),
+    (
+        ("Owner/Project", URL),
+        ("owner/project", "https://github.com/Owner/Project/issues/1"),
+    ),
+)
+def test_reader_accepts_equivalent_repository_casing(
+    repository: str, reference: str
+) -> None:
+    issue, compact = managed_issue("bug")
+    result = read_local(issue, compact, reference, repository)
+    assert result["record"] == URL
+    assert result["body"] == issue["body"]
+
+
 def test_reader_rejects_closed_problem_records() -> None:
     issue, compact = managed_issue("bug", "closed")
     with pytest.raises(records.ItemError, match="only open problem records"):
@@ -97,6 +117,22 @@ def test_reader_rejects_closed_problem_records() -> None:
     ("reference", "message"),
     (
         ("owner/project#1", "canonical GitHub issue URL"),
+        (
+            "HTTPS://github.com/owner/project/issues/1",
+            "canonical GitHub issue URL",
+        ),
+        (
+            "https://GITHUB.COM/owner/project/issues/1",
+            "canonical GitHub issue URL",
+        ),
+        (
+            "https://github.com/owner/project/ISSUES/1",
+            "canonical GitHub issue URL",
+        ),
+        (
+            "https://github.com/owner/project/issues/01",
+            "canonical GitHub issue URL",
+        ),
         (
             "https://github.com/owner/project/issues/1/",
             "matching the selected repository",
