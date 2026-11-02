@@ -7,9 +7,10 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from importlib import import_module
 from pathlib import Path
-from types import SimpleNamespace
+from threading import Event
 from typing import Any
 from unittest.mock import patch
 
@@ -315,40 +316,27 @@ def test_board_placement_uses_its_own_client(api: FakeAPI) -> None:
     assert [project["title"] for project in boards.projects] == ["project", "owner"]
 
 
-def test_project_token_uses_an_inactive_login_with_project_scope() -> None:
-    hosts: dict[str, Any] = {
-        "hosts": {
-            "github.com": [
-                {
-                    "login": "work",
-                    "active": True,
-                    "state": "success",
-                    "scopes": "repo, read:org",
-                },
-                {
-                    "login": "personal",
-                    "active": False,
-                    "state": "success",
-                    "scopes": "project, repo",
-                },
-            ]
-        }
-    }
-    calls: list[list[str]] = []
-
-    def run(command: list[str], **_: Any) -> SimpleNamespace:
-        calls.append(command)
-        output = json.dumps(hosts) if command[2] == "status" else "secret\n"
-        return SimpleNamespace(stdout=output)
-
-    assert github.project_token(run) == "secret"
-    assert "personal" in calls[-1]
-    hosts["hosts"]["github.com"][0]["scopes"] = "project, repo"
-    assert github.project_token(run) is None
-    assert (
-        github.project_token(lambda *_, **__: SimpleNamespace(stdout="not json"))
-        is None
+def test_execute_uses_selected_authentication_for_issue_and_boards(
+    api: FakeAPI,
+) -> None:
+    args = argparse.Namespace(
+        command="create",
+        root=".",
+        input="unused.json",
+        request_id="request-0001",
+        reconcile_only=False,
     )
+    with (
+        patch.object(github, "GitHub", return_value=api) as client,
+        patch.object(github, "selection", return_value=CONFIG),
+        patch.object(github, "RequestJournal", return_value=None),
+        patch.object(github, "read_input", return_value=item()),
+    ):
+        created = github.execute(args)
+    client.assert_called_once_with()
+    assert created["boards"] == {"placed": ["project", "owner"]}
+    assert len(api.issues) == 1
+    assert len(api.projects) == 2
 
 
 def test_issue_urls_match_the_origin_case_insensitively(
@@ -649,6 +637,68 @@ def journal_tracker(tmp_path: Path) -> tuple[FakeAPI, Any, Any]:
     api = FakeAPI()
     journal = RequestJournal(tmp_path)
     return api, journal, github.Tracker(CONFIG, api, journal)
+
+
+def test_different_requests_reuse_existing_repository_and_owner_boards(
+    tmp_path: Path,
+) -> None:
+    api, _, tracker = journal_tracker(tmp_path)
+    tracker.create(item(), "request-0001")
+    second = tracker.create(item("debt"), "request-0002")
+    assert second["boards"] == {"placed": ["project", "owner"]}
+    assert [project["title"] for project in api.projects] == ["project", "owner"]
+    assert len(api.issues) == 2
+    assert len(api.status) == 4
+    assert all(
+        sum(field.get("name") == "Kind" for field in project["fields"]["nodes"]) == 1
+        for project in api.projects
+    )
+
+
+def test_concurrent_first_requests_reconcile_without_duplicate_boards(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    first_inventory = Event()
+    release_inventory = Event()
+
+    class PausedBoardAPI(FakeAPI):
+        def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            result = super().graphql(query, variables)
+            if query == github.BOARDS and not first_inventory.is_set():
+                first_inventory.set()
+                assert release_inventory.wait(5)
+            return result
+
+    api = PausedBoardAPI()
+    first_tracker = github.Tracker(CONFIG, api, RequestJournal(tmp_path))
+    second_tracker = github.Tracker(CONFIG, api, RequestJournal(tmp_path))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(first_tracker.create, item(), "request-0001")
+        try:
+            assert first_inventory.wait(5)
+            concurrent = pool.submit(
+                second_tracker.create, item("debt"), "request-0002"
+            ).result(timeout=5)
+        finally:
+            release_inventory.set()
+        first_result = first.result(timeout=5)
+
+    assert "another work-item writer" in concurrent["boards"]["error"]
+    assert first_result["boards"] == {"placed": ["project", "owner"]}
+    reconciled = second_tracker.create(item("debt"), "request-0002")
+    assert reconciled["reconciled"] is True
+    assert reconciled["boards"] == {"placed": ["project", "owner"]}
+    assert len(api.issues) == 2
+    assert [project["title"] for project in api.projects] == ["project", "owner"]
+    assert len(api.status) == 4
+    assert (
+        sum(
+            endpoint == "graphql" and payload["query"] == github.BOARDS
+            for _, endpoint, payload in api.calls
+        )
+        == 2
+    )
 
 
 def test_repeat_uses_returned_identity_even_when_list_omits_new_issue(

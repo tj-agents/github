@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
@@ -45,58 +46,9 @@ def json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def project_token(run: Any = subprocess.run) -> str | None:
-    try:
-        status = run(
-            ["gh", "auth", "status", "--json", "hosts"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=20,
-            check=False,
-        )
-        accounts = json.loads(status.stdout)["hosts"]["github.com"]
-        eligible = [
-            account
-            for account in accounts
-            if account.get("state") == "success"
-            and "project"
-            in [scope.strip() for scope in account.get("scopes", "").split(",")]
-        ]
-        if not eligible or any(account.get("active") for account in eligible):
-            return None
-        token = run(
-            [
-                "gh",
-                "auth",
-                "token",
-                "--hostname",
-                "github.com",
-                "--user",
-                eligible[0]["login"],
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=20,
-            check=False,
-        )
-        return token.stdout.strip() or None
-    except (
-        OSError,
-        subprocess.SubprocessError,
-        ValueError,
-        KeyError,
-        TypeError,
-        AttributeError,
-    ):
-        return None
-
-
 class GitHub:
-    def __init__(self, timeout: int = 60, token: str | None = None) -> None:
+    def __init__(self, timeout: int = 60) -> None:
         self.timeout = timeout
-        self.token = token
 
     def request(
         self,
@@ -132,8 +84,6 @@ class GitHub:
         command.append(path)
         env = {**os.environ, "GH_PROMPT_DISABLED": "1"}
         env.pop("GH_DEBUG", None)
-        if self.token:
-            env["GH_TOKEN"] = self.token
         try:
             result = subprocess.run(
                 command,
@@ -603,12 +553,14 @@ class Tracker:
             or not isinstance(response.get("data"), dict)
         ):
             raise APIError(
-                "GitHub GraphQL request failed; verify gh has the project scope"
+                "GitHub GraphQL request failed; verify the selected identity "
+                "has Projects access for this owner"
             )
         data = response["data"]
         if not isinstance(data, dict):
             raise APIError(
-                "GitHub GraphQL request failed; verify gh has the project scope"
+                "GitHub GraphQL request failed; verify the selected identity "
+                "has Projects access for this owner"
             )
         return data
 
@@ -705,43 +657,44 @@ class Tracker:
         owner, name = self.repo.split("/")
         placed = []
         try:
-            owner_id, found = self.boards(owner)
-            for title in dict.fromkeys((name, owner)):
-                project, fields = self.board(owner_id, found, title, owner)
-                entry = self.graphql(
-                    ADD_ITEM, project=project, content=issue["node_id"]
-                )["addProjectV2ItemById"]["item"]
-                existing_status = entry.get("status")
-                current_status = (
-                    existing_status.get("name")
-                    if preserve_existing
-                    and isinstance(existing_status, dict)
-                    and isinstance(existing_status.get("name"), str)
-                    and existing_status["name"]
-                    else None
-                )
-                desired_status = current_status or status
-                self.option(fields, "Status", desired_status)
-                self.option(fields, "Kind", kind)
-                if current_status is None:
+            with self.journal.writer() if self.journal else nullcontext():
+                owner_id, found = self.boards(owner)
+                for title in dict.fromkeys((name, owner)):
+                    project, fields = self.board(owner_id, found, title, owner)
+                    entry = self.graphql(
+                        ADD_ITEM, project=project, content=issue["node_id"]
+                    )["addProjectV2ItemById"]["item"]
+                    existing_status = entry.get("status")
+                    current_status = (
+                        existing_status.get("name")
+                        if preserve_existing
+                        and isinstance(existing_status, dict)
+                        and isinstance(existing_status.get("name"), str)
+                        and existing_status["name"]
+                        else None
+                    )
+                    desired_status = current_status or status
+                    self.option(fields, "Status", desired_status)
+                    self.option(fields, "Kind", kind)
+                    if current_status is None:
+                        self.set_option(
+                            project,
+                            entry,
+                            fields,
+                            "Status",
+                            desired_status,
+                            desired_status,
+                        )
                     self.set_option(
                         project,
                         entry,
                         fields,
-                        "Status",
+                        "Kind",
+                        kind,
                         desired_status,
-                        desired_status,
+                        kind,
                     )
-                self.set_option(
-                    project,
-                    entry,
-                    fields,
-                    "Kind",
-                    kind,
-                    desired_status,
-                    kind,
-                )
-                placed.append(title)
+                    placed.append(title)
         except (APIError, ItemError, KeyError, TypeError) as error:
             return {
                 "placed": placed,
@@ -956,12 +909,7 @@ def add_commands(commands: Any, names: tuple[str, ...] | None = None) -> None:
 
 def execute(args: Any) -> dict[str, Any]:
     api = GitHub()
-    board_api = (
-        GitHub(token=project_token())
-        if args.command in ("create", "progress", "close")
-        else None
-    )
-    tracker = Tracker(selection(args.root), api, RequestJournal(args.root), board_api)
+    tracker = Tracker(selection(args.root), api, RequestJournal(args.root))
     if args.command == "create":
         return tracker.create(
             read_input(args.input), args.request_id, args.reconcile_only

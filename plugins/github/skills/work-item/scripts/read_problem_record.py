@@ -23,7 +23,12 @@ from tj_github_work_items.records import ItemError  # noqa: E402
 def read(root: str, reference: str) -> dict[str, str]:
     tracker = Tracker(selection(root), GitHub(timeout=10))
     number = issue_number(reference, tracker.repo)
-    if reference != f"https://github.com/{tracker.repo}/issues/{number}":
+    canonical = f"https://github.com/{tracker.repo}/issues/{number}"
+    if (
+        not reference.startswith("https://github.com/")
+        or not reference.endswith(f"/issues/{number}")
+        or reference.casefold() != canonical.casefold()
+    ):
         raise ItemError("problem records require the canonical GitHub issue URL")
     issue = tracker.get(number)
     info, text = metadata(issue["body"])
