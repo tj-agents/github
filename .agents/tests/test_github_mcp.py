@@ -80,7 +80,7 @@ def messages(output: io.StringIO) -> list[dict[str, object]]:
 
 
 def request(
-    identifier: int, method: str, params: dict[str, object] | None = None
+    identifier: int | str, method: str, params: dict[str, object] | None = None
 ) -> str:
     value: dict[str, object] = {"jsonrpc": "2.0", "id": identifier, "method": method}
     if params is not None:
@@ -168,6 +168,103 @@ def test_mcp_accepts_omitted_params_and_client_capabilities() -> None:
     assert result[2]["id"] == 3
 
 
+def test_mcp_accepts_standard_request_metadata_without_expanding_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int | str, str, dict[str, object]]] = []
+
+    def upstream(
+        identifier: int | str,
+        name: str,
+        arguments: dict[str, object],
+        selected: github_binding.Binding,
+        platform: Platform,
+    ) -> dict[str, object]:
+        calls.append((identifier, name, arguments))
+        return {"jsonrpc": "2.0", "id": identifier, "result": {}}
+
+    monkeypatch.setattr(github_mcp_stdio, "_upstream_call", upstream)
+    output = io.StringIO()
+    github_mcp_stdio.serve(
+        binding(),
+        Platform(),
+        session(
+            request(
+                1,
+                "initialize",
+                {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "_meta": {"progressToken": "initialize-progress"},
+                },
+            ),
+            initialized(),
+            request(2, "tools/list", {"_meta": {"progressToken": 2}}),
+            request(3, "ping", {"_meta": {"progressToken": "ping-progress"}}),
+            request(
+                4,
+                "tools/call",
+                {
+                    "name": "list_branches",
+                    "arguments": {"owner": "employer", "repo": "private"},
+                    "_meta": {
+                        "progressToken": "call-progress",
+                        "io.example/trace": {"trace": "retained"},
+                    },
+                },
+            ),
+            request(
+                5,
+                "tools/call",
+                {
+                    "name": "list_branches",
+                    "arguments": {"owner": "employer", "repo": "private"},
+                    "task": {},
+                },
+            ),
+        ),
+        output,
+    )
+    result = messages(output)
+    assert result[0]["result"] == {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "github-access", "version": "1"},
+    }
+    assert result[1]["id"] == 2
+    assert result[2]["id"] == 3
+    assert result[3]["id"] == 4
+    assert result[4]["error"] == {
+        "code": -32602,
+        "message": "tool call is invalid",
+    }
+    assert calls == [
+        (4, "list_branches", {"owner": "employer", "repo": "private"})
+    ]
+
+
+def test_mcp_rejects_invalid_progress_metadata() -> None:
+    output = io.StringIO()
+    github_mcp_stdio.serve(
+        binding(),
+        Platform(),
+        session(
+            request(
+                1,
+                "initialize",
+                {"protocolVersion": "2025-11-25", "capabilities": {}},
+            ),
+            initialized(),
+            request(2, "ping", {"_meta": {"progressToken": True}}),
+        ),
+        output,
+    )
+    assert messages(output)[1]["error"] == {
+        "code": -32602,
+        "message": "ping request is invalid",
+    }
+
+
 def test_mcp_bound_gateway_entry_lists_without_credential(tmp_path: Path) -> None:
     root = tmp_path / "employer"
     root.mkdir()
@@ -242,6 +339,114 @@ def test_mcp_bound_gateway_entry_lists_without_credential(tmp_path: Path) -> Non
         "get_file_contents",
         "pull_request_read",
     ]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows stdio encoding regression")
+def test_mcp_entry_uses_utf8_for_windows_pipes(tmp_path: Path) -> None:
+    root = tmp_path / "employer"
+    root.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/employer/private.git",
+        ],
+        check=True,
+    )
+    declaration = tmp_path / "profile.json"
+    declaration.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "host": "github.com",
+                "organization": "employer",
+                "login": "worker",
+                "repositories": ["private"],
+                "verify_repository": "private",
+                "permissions": {"contents": "read"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected = github_binding.bind(
+        declaration,
+        root,
+        tmp_path / "state",
+        Path(github_access.__file__).parent,
+        github_platform.current_platform(),
+    )
+    identifier = "déjà-雪"
+    payload = session(
+        request(
+            identifier,
+            "initialize",
+            {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "München", "version": "1"},
+            },
+        ),
+        initialized(),
+        request(2, "tools/list"),
+    ).getvalue()
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "cp1252:strict"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            str(Path(github_access.__file__)),
+            "mcp",
+            "--binding",
+            str(selected.path),
+        ],
+        cwd=root,
+        env=environment,
+        input=payload.encode("utf-8"),
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8")
+    response = [json.loads(line) for line in result.stdout.decode("utf-8").splitlines()]
+    assert response[0]["id"] == identifier
+    assert [tool["name"] for tool in response[1]["result"]["tools"]] == [
+        "list_branches",
+        "get_file_contents",
+        "pull_request_read",
+    ]
+
+
+def test_mcp_recovers_after_nested_json_parse_error() -> None:
+    output = io.StringIO()
+    depth = sys.getrecursionlimit() * 5
+    nested = "[" * depth + "0" + "]" * depth
+    github_mcp_stdio.serve(
+        binding(),
+        Platform(),
+        session(
+            request(
+                1,
+                "initialize",
+                {"protocolVersion": "2025-11-25", "capabilities": {}},
+            ),
+            initialized(),
+            nested,
+            request(2, "ping", {}),
+        ),
+        output,
+    )
+    result = messages(output)
+    assert result[1]["error"] == {
+        "code": -32700,
+        "message": "invalid JSON-RPC JSON",
+    }
+    assert result[2] == {"jsonrpc": "2.0", "id": 2, "result": {}}
 
 
 @pytest.mark.parametrize(

@@ -55,6 +55,22 @@ def helper_command(binding: github_binding.Binding) -> str:
     return github_native_git.helper_command(binding)
 
 
+def configure_mcp_stdio() -> None:
+    input_reconfigure = getattr(sys.stdin, "reconfigure", None)
+    output_reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if input_reconfigure is None or output_reconfigure is None:
+        raise access_core.AccessError(
+            "mcp-stdio-unavailable: configure UTF-8 MCP streams"
+        )
+    try:
+        input_reconfigure(encoding="utf-8", errors="strict")
+        output_reconfigure(encoding="utf-8", errors="strict")
+    except (OSError, ValueError) as error:
+        raise access_core.AccessError(
+            "mcp-stdio-unavailable: configure UTF-8 MCP streams"
+        ) from error
+
+
 def run_git(
     binding: github_binding.Binding,
     profile: access_core.Profile,
@@ -162,7 +178,10 @@ def dispatch(
                 Path(__file__).resolve().parent,
                 platform,
             )
-        github_mcp_install.install(binding.state_root, platform.mcp_release())
+        if arguments.check:
+            github_mcp_install.check(binding.state_root, platform.mcp_release())
+        else:
+            github_mcp_install.install(binding.state_root, platform.mcp_release())
         print(
             json.dumps(
                 {
@@ -218,6 +237,7 @@ def dispatch(
         return result.returncode
     if arguments.operation == "mcp":
         binding = selected_binding(arguments.binding, platform)
+        configure_mcp_stdio()
         return github_mcp_stdio.serve(binding, platform)
     binding = (
         selected_binding(arguments.binding, platform)
