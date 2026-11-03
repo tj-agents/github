@@ -1287,6 +1287,43 @@ def test_git_config_snapshot_rejects_netrc_destination(
         )
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows path aliases")
+@pytest.mark.parametrize(
+    ("fixture", "alias"),
+    [
+        ("_netrc", "_netrc."),
+        ("_netrc", "_netrc "),
+        (".netrc", ".netrc."),
+        ("_netrc", "_netrc::$DATA"),
+    ],
+)
+def test_git_config_snapshot_rejects_windows_netrc_aliases(
+    tmp_path: Path, fixture: str, alias: str
+) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    home.mkdir()
+    (home / fixture).write_text("[safe]\n\tvalue = value\n", encoding="utf-8")
+    subprocess.run(
+        [
+            str(git_executable()),
+            "-C",
+            str(root),
+            "config",
+            "include.path",
+            f"~/{alias}",
+        ],
+        check=True,
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        github_tools._effective_git_config(
+            git_executable(),
+            root,
+            {"PATH": os.environ["PATH"], "HOME": str(home)},
+            60,
+        )
+
+
 def test_git_config_snapshot_preserves_home_relative_hooks_path(tmp_path: Path) -> None:
     root = git_worktree(tmp_path)
     home = tmp_path / "original-home"
@@ -1326,6 +1363,55 @@ def test_git_config_snapshot_preserves_home_relative_hooks_path(tmp_path: Path) 
     )
     assert result.returncode == 0
     assert capture.read_text(encoding="utf-8") == "hook"
+
+
+def test_git_config_snapshot_preserves_empty_hooks_path(tmp_path: Path) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    home.mkdir()
+    git = git_executable()
+    subprocess.run(
+        [str(git), "-C", str(root), "config", "core.hooksPath", ""], check=True
+    )
+    isolated_home = tmp_path / "isolated-home"
+    isolated_home.mkdir()
+    _, snapshot, _ = _isolated_config_snapshot(root, home, isolated_home)
+    assert snapshot.hooks_path == ""
+    assert github_tools._normalized_git_arguments(
+        github_tools.GitInvocation(
+            Repository("employer", "private-project"), ("fetch", "origin")
+        ),
+        snapshot.hooks_path,
+    ) == ("-c", "core.hooksPath=", "fetch", "--recurse-submodules=no", "origin")
+
+
+def test_git_runner_rejects_home_dependent_include_condition_before_helper(
+    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    root = git_worktree(home / "work")
+    home_config = home / "included.config"
+    home_config.write_text("[safe]\n\tvalue = value\n", encoding="utf-8")
+    config = root / ".git" / "config"
+    with config.open("a", encoding="utf-8") as stream:
+        stream.write('[includeIf "gitdir:~/work/"]\n\tpath = ~/included.config\n')
+    monkeypatch.setattr(
+        github_tools,
+        "git_environment",
+        lambda source, helper_command, home: (_ for _ in ()).throw(
+            AssertionError("credential helper environment must not be built")
+        ),
+    )
+    with pytest.raises(AccessError, match=r"^git-config-isolation:"):
+        run_git(
+            profile,
+            git_executable(),
+            ("fetch", "origin"),
+            remotes={"origin": "https://github.com/employer/private-project.git"},
+            helper_command="helper",
+            cwd=root,
+            environment={"PATH": os.environ["PATH"], "HOME": str(home)},
+        )
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows Git resolution")
