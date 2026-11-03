@@ -265,6 +265,92 @@ def test_mcp_rejects_invalid_progress_metadata() -> None:
     }
 
 
+def test_mcp_rejects_null_metadata_without_dispatch_and_recovers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int | str, str, dict[str, object]]] = []
+
+    def upstream(
+        identifier: int | str,
+        name: str,
+        arguments: dict[str, object],
+        selected: github_binding.Binding,
+        platform: Platform,
+    ) -> dict[str, object]:
+        calls.append((identifier, name, arguments))
+        return {"jsonrpc": "2.0", "id": identifier, "result": {}}
+
+    monkeypatch.setattr(github_mcp_stdio, "_upstream_call", upstream)
+    output = io.StringIO()
+    github_mcp_stdio.serve(
+        binding(),
+        Platform(),
+        session(
+            request(
+                1,
+                "initialize",
+                {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "_meta": None,
+                },
+            ),
+            request(
+                2,
+                "initialize",
+                {"protocolVersion": "2025-11-25", "capabilities": {}},
+            ),
+            initialized(),
+            request(3, "tools/list", {"_meta": None}),
+            request(4, "tools/list", {}),
+            request(5, "ping", {"_meta": None}),
+            request(6, "ping", {}),
+            request(
+                7,
+                "tools/call",
+                {
+                    "name": "list_branches",
+                    "arguments": {"owner": "employer", "repo": "private"},
+                    "_meta": None,
+                },
+            ),
+            request(
+                8,
+                "tools/call",
+                {
+                    "name": "list_branches",
+                    "arguments": {"owner": "employer", "repo": "private"},
+                },
+            ),
+        ),
+        output,
+    )
+    result = messages(output)
+    assert result[0]["error"] == {
+        "code": -32602,
+        "message": "initialize request is invalid",
+    }
+    assert result[1]["id"] == 2
+    assert result[2]["error"] == {
+        "code": -32602,
+        "message": "tools list request is invalid",
+    }
+    assert result[3]["id"] == 4
+    assert result[4]["error"] == {
+        "code": -32602,
+        "message": "ping request is invalid",
+    }
+    assert result[5]["id"] == 6
+    assert result[6]["error"] == {
+        "code": -32602,
+        "message": "tool call request is invalid",
+    }
+    assert result[7]["id"] == 8
+    assert calls == [
+        (8, "list_branches", {"owner": "employer", "repo": "private"})
+    ]
+
+
 def test_mcp_bound_gateway_entry_lists_without_credential(tmp_path: Path) -> None:
     root = tmp_path / "employer"
     root.mkdir()
