@@ -150,7 +150,10 @@ def private_environment(source: Mapping[str, str]) -> dict[str, str]:
         "GITHUB_PERSONAL_ACCESS_TOKEN",
         "GIT_CONFIG_PARAMETERS",
         "GIT_CONFIG",
+        "GIT_EXEC_PATH",
         "GIT_ASKPASS",
+        "GIT_PROXY_COMMAND",
+        "GIT_REDIRECT_STDERR",
         "SSH_ASKPASS",
         "GCM_INTERACTIVE",
         "GCM_PROVIDER",
@@ -164,12 +167,25 @@ def private_environment(source: Mapping[str, str]) -> dict[str, str]:
         "GIT_INDEX_FILE",
         "GIT_CEILING_DIRECTORIES",
         "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+        "SSLKEYLOGFILE",
+        "CURL_SSL_BACKEND",
     }
     return {
         key: value
         for key, value in source.items()
         if key.upper() not in excluded
-        and not key.upper().startswith(("GIT_CONFIG_", "GIT_TRACE", "GCM_", "GH_HOST"))
+        and not key.upper().startswith(
+            (
+                "GIT_CONFIG_",
+                "GIT_TRACE",
+                "GIT_SSL_",
+                "GIT_HTTP_",
+                "GIT_CURL_",
+                "GCM_",
+                "GH_HOST",
+            )
+        )
+        and not key.upper().endswith("_PROXY")
     }
 
 

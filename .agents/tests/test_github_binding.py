@@ -13,6 +13,7 @@ from github_platform import (
     SupportedPlatform,
     current_platform,
 )
+from github_tools import git_environment
 
 
 @pytest.fixture
@@ -192,7 +193,7 @@ def test_environment_removes_inherited_identity_proxy_and_python_controls(
         source_directory,
         platform,
     )
-    environment = binding.environment(
+    environment = binding.activation_settings(
         {
             "PATH": "host-tools",
             "GH_TOKEN": "secret",
@@ -209,29 +210,33 @@ def test_environment_removes_inherited_identity_proxy_and_python_controls(
     assert environment["GITHUB_ACCESS_BINDING"] == str(binding.path)
     assert environment["PATH"].split(os.pathsep)[0] == str(binding.launchers)
     assert environment["AGENT_STATE_DIRECTORY"] == str(binding.state_root)
-    configured = [
-        (
-            environment[f"GIT_CONFIG_KEY_{index}"],
-            environment[f"GIT_CONFIG_VALUE_{index}"],
-        )
-        for index in range(int(environment["GIT_CONFIG_COUNT"]))
-    ]
-    assert ("credential.helper", "") in configured
-    assert ("http.extraHeader", "") in configured
-    assert ("http.followRedirects", "false") in configured
-    assert ("http.sslVerify", "true") in configured
-    assert ("credential.useHttpPath", "true") in configured
-    assert configured[-1][0] == "credential.https://github.com.helper"
-    assert configured[-1][1].startswith("!")
-    assert all(
-        not key.casefold().startswith(
-            ("gh_", "github_", "http_proxy", "https_proxy", "pythonpath")
-        )
-        or key == "GITHUB_ACCESS_BINDING"
-        for key in environment
+    assert set(environment) == {
+        "PATH",
+        "GITHUB_ACCESS_BINDING",
+        "AGENT_STATE_DIRECTORY",
+    }
+
+
+@pytest.mark.parametrize("backend", ["gpg", "secretservice"])
+def test_binding_safe_credential_backend_reaches_git_child(
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
+    backend: str,
+) -> None:
+    binding = bind(
+        profile_path,
+        worktree(tmp_path),
+        state_root(tmp_path),
+        source_directory,
+        platform,
     )
-    assert "GH_TOKEN" not in environment
-    assert "GITHUB_TOKEN" not in environment
+    public = binding.activation_settings(
+        {"PATH": "host-tools", "GCM_CREDENTIAL_STORE": backend}
+    )
+    child = git_environment(public, "helper", tmp_path / "home")
+    assert child["GCM_CREDENTIAL_STORE"] == backend
 
 
 def test_installed_launcher_invokes_runtime_entry_with_exact_binding(

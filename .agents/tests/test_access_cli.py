@@ -136,14 +136,17 @@ def test_installed_launcher_loads_real_cli_and_rechecks_scope(
     assert "Traceback" not in result.stderr
 
 
-def test_binding_environment_preserves_explicit_secure_backend(
-    selected: github_binding.Binding,
+@pytest.mark.parametrize("backend", ["gpg", "secretservice"])
+def test_binding_activation_settings_preserve_explicit_secure_backend(
+    selected: github_binding.Binding, backend: str
 ) -> None:
     assert (
-        selected.environment({"GCM_CREDENTIAL_STORE": "gpg"})["GCM_CREDENTIAL_STORE"]
-        == "gpg"
+        selected.activation_settings({"GCM_CREDENTIAL_STORE": backend})[
+            "GCM_CREDENTIAL_STORE"
+        ]
+        == backend
     )
-    assert "GCM_CREDENTIAL_STORE" not in selected.environment(
+    assert "GCM_CREDENTIAL_STORE" not in selected.activation_settings(
         {"GCM_CREDENTIAL_STORE": "plaintext"}
     )
 
