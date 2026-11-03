@@ -6,6 +6,7 @@ from pathlib import Path
 import access_core
 import github_access
 import github_binding
+import github_platform
 import pytest
 
 
@@ -46,7 +47,11 @@ def selected(tmp_path: Path) -> github_binding.Binding:
         encoding="utf-8",
     )
     return github_binding.bind(
-        profile, root, tmp_path / "state", Path(github_access.__file__).parent
+        profile,
+        root,
+        tmp_path / "state",
+        Path(github_access.__file__).parent,
+        github_platform.current_platform(),
     )
 
 
@@ -89,7 +94,7 @@ def test_installed_launcher_loads_real_cli_and_rechecks_scope(
     selected: github_binding.Binding,
     tmp_path: Path,
 ) -> None:
-    launcher = selected.launchers / ("gh.exe" if os.name == "nt" else "gh")
+    launcher = github_platform.current_platform().launcher_path(selected.launchers)
     environment = {
         key: value
         for key, value in os.environ.items()

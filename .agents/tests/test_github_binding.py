@@ -7,6 +7,21 @@ from typing import Any
 import pytest
 from access_core import AccessError
 from github_binding import Binding, bind
+from github_platform import (
+    PLATFORMS,
+    PlatformProtocol,
+    SupportedPlatform,
+    current_platform,
+)
+
+
+@pytest.fixture
+def platform() -> PlatformProtocol:
+    return current_platform()
+
+
+def test_current_platform_selects_the_mapped_implementation() -> None:
+    assert current_platform() is PLATFORMS[SupportedPlatform(os.name)]
 
 
 @pytest.fixture
@@ -67,10 +82,13 @@ def state_root(tmp_path: Path) -> Path:
 
 
 def test_bind_writes_exact_public_selection_and_immutable_runtime(
-    tmp_path: Path, profile_path: Path, source_directory: Path
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> None:
     root = worktree(tmp_path)
-    binding = bind(profile_path, root, state_root(tmp_path), source_directory)
+    binding = bind(profile_path, root, state_root(tmp_path), source_directory, platform)
     stored = json.loads(binding.path.read_text(encoding="utf-8"))
     assert binding.path == root / ".agents" / "github-access.json"
     assert stored["root"] == str(root.resolve())
@@ -85,8 +103,11 @@ def test_bind_writes_exact_public_selection_and_immutable_runtime(
     assert (binding.runtime / "access_core.py").read_text(
         encoding="utf-8"
     ) == "MARKER = 'copied'\n"
-    assert binding.validate(root) == binding.profile
-    assert bind(profile_path, root, state_root(tmp_path), source_directory) == binding
+    assert binding.validate(root, platform) == binding.profile
+    assert (
+        bind(profile_path, root, state_root(tmp_path), source_directory, platform)
+        == binding
+    )
 
 
 @pytest.mark.parametrize(
@@ -99,24 +120,31 @@ def test_bind_writes_exact_public_selection_and_immutable_runtime(
     ],
 )
 def test_bind_rejects_non_allowlisted_origin_before_installation(
-    tmp_path: Path, profile_path: Path, source_directory: Path, origin: str
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    origin: str,
+    platform: PlatformProtocol,
 ) -> None:
     root = worktree(tmp_path, origin)
     with pytest.raises(AccessError, match="binding-invalid"):
-        bind(profile_path, root, state_root(tmp_path), source_directory)
+        bind(profile_path, root, state_root(tmp_path), source_directory, platform)
     assert not (root / ".agents" / "github-access.json").exists()
 
 
 def test_binding_rejects_parent_sibling_and_changed_origin(
-    tmp_path: Path, profile_path: Path, source_directory: Path
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> None:
     root = worktree(tmp_path)
-    binding = bind(profile_path, root, state_root(tmp_path), source_directory)
+    binding = bind(profile_path, root, state_root(tmp_path), source_directory, platform)
     with pytest.raises(AccessError, match="binding-invalid"):
-        binding.validate(root.parent)
+        binding.validate(root.parent, platform)
     sibling = worktree(tmp_path / "sibling")
     with pytest.raises(AccessError, match="another worktree"):
-        binding.validate(sibling)
+        binding.validate(sibling, platform)
     subprocess.run(
         [
             "git",
@@ -130,7 +158,7 @@ def test_binding_rejects_parent_sibling_and_changed_origin(
         check=True,
     )
     with pytest.raises(AccessError, match="allowlist"):
-        binding.validate(root)
+        binding.validate(root, platform)
 
 
 def test_existing_other_account_needs_explicit_retirement(
@@ -138,22 +166,30 @@ def test_existing_other_account_needs_explicit_retirement(
     profile_path: Path,
     source_directory: Path,
     declaration: dict[str, Any],
+    platform: PlatformProtocol,
 ) -> None:
     root = worktree(tmp_path)
-    bind(profile_path, root, state_root(tmp_path), source_directory)
+    bind(profile_path, root, state_root(tmp_path), source_directory, platform)
     declaration["login"] = "another-developer"
     replacement = tmp_path / "replacement.json"
     replacement.write_text(json.dumps(declaration), encoding="utf-8")
     with pytest.raises(AccessError, match="binding-exists"):
-        bind(replacement, root, state_root(tmp_path), source_directory)
+        bind(replacement, root, state_root(tmp_path), source_directory, platform)
     assert (root / ".agents" / "github-access.json").exists()
 
 
 def test_environment_removes_inherited_identity_proxy_and_python_controls(
-    tmp_path: Path, profile_path: Path, source_directory: Path
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> None:
     binding = bind(
-        profile_path, worktree(tmp_path), state_root(tmp_path), source_directory
+        profile_path,
+        worktree(tmp_path),
+        state_root(tmp_path),
+        source_directory,
+        platform,
     )
     environment = binding.environment(
         {
@@ -198,13 +234,20 @@ def test_environment_removes_inherited_identity_proxy_and_python_controls(
 
 
 def test_installed_launcher_invokes_runtime_entry_with_exact_binding(
-    tmp_path: Path, profile_path: Path, source_directory: Path
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> None:
     binding = bind(
-        profile_path, worktree(tmp_path), state_root(tmp_path), source_directory
+        profile_path,
+        worktree(tmp_path),
+        state_root(tmp_path),
+        source_directory,
+        platform,
     )
     capture = tmp_path / "argv.json"
-    launcher = binding.launchers / ("gh.exe" if os.name == "nt" else "gh")
+    launcher = platform.launcher_path(binding.launchers)
     environment = {"GITHUB_BINDING_CAPTURE": str(capture), "PATH": os.environ["PATH"]}
     result = subprocess.run(
         [str(launcher), "pr", "status"],
@@ -230,28 +273,38 @@ def test_installed_launcher_invokes_runtime_entry_with_exact_binding(
 
 
 def test_binding_load_rejects_tampered_public_paths(
-    tmp_path: Path, profile_path: Path, source_directory: Path
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> None:
     binding = bind(
-        profile_path, worktree(tmp_path), state_root(tmp_path), source_directory
+        profile_path,
+        worktree(tmp_path),
+        state_root(tmp_path),
+        source_directory,
+        platform,
     )
     document = json.loads(binding.path.read_text(encoding="utf-8"))
     document["launchers"] = str(binding.runtime / "bin")
     binding.path.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(AccessError, match="binding-invalid"):
-        Binding.load(binding.path)
+        Binding.load(binding.path, platform)
 
 
 def test_check_requires_exact_root_and_current_runtime(
-    tmp_path: Path, profile_path: Path, source_directory: Path
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> None:
     root = worktree(tmp_path)
-    binding = bind(profile_path, root, state_root(tmp_path), source_directory)
-    binding.check(root, source_directory)
+    binding = bind(profile_path, root, state_root(tmp_path), source_directory, platform)
+    binding.check(root, source_directory, platform)
     with pytest.raises(AccessError, match="exact Git worktree root"):
-        binding.check(root / ".git", source_directory)
+        binding.check(root / ".git", source_directory, platform)
     (source_directory / "access_core.py").write_text(
         "MARKER = 'changed'\n", encoding="utf-8"
     )
     with pytest.raises(AccessError, match="runtime is stale"):
-        binding.check(root, source_directory)
+        binding.check(root, source_directory, platform)

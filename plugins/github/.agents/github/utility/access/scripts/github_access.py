@@ -10,6 +10,7 @@ from pathlib import Path
 
 import access_core
 import github_binding
+import github_platform
 import github_tools
 
 
@@ -17,18 +18,6 @@ def state_root() -> Path:
     return Path(
         os.environ.get("AGENT_STATE_DIRECTORY", str(Path.home() / ".agents-state"))
     )
-
-
-def real_gh() -> Path:
-    candidates = (
-        [Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "GitHub CLI/gh.exe"]
-        if os.name == "nt"
-        else [Path("/usr/bin/gh"), Path("/usr/local/bin/gh")]
-    )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-    raise access_core.AccessError("gh-unavailable: install the official GitHub CLI")
 
 
 def git_read(root: Path, arguments: Sequence[str]) -> str:
@@ -115,13 +104,14 @@ def verify_tools(
     profile: access_core.Profile,
     state: access_core.State,
     vault: access_core.Vault,
+    platform: github_platform.PlatformProtocol,
 ) -> None:
     repository = f"{profile.organization}/{profile.verify_repository}"
     result = github_tools.run_gh(
         profile,
         state,
         vault,
-        real_gh(),
+        platform.real_gh(),
         ["api", f"repos/{repository}", "--jq", ".full_name"],
         default_repository=repository,
     )
@@ -157,25 +147,29 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def selected_binding(path: Path | None) -> github_binding.Binding:
+def selected_binding(
+    path: Path | None, platform: github_platform.PlatformProtocol
+) -> github_binding.Binding:
     if path is None:
         inherited = os.environ.get("GITHUB_ACCESS_BINDING")
         path = (
             Path(inherited) if inherited else Path.cwd() / ".agents/github-access.json"
         )
-    binding = github_binding.Binding.load(path)
-    binding.validate(Path.cwd())
+    binding = github_binding.Binding.load(path, platform)
+    binding.validate(Path.cwd(), platform)
     return binding
 
 
-def dispatch(arguments: argparse.Namespace) -> int:
+def dispatch(
+    arguments: argparse.Namespace, platform: github_platform.PlatformProtocol
+) -> int:
     binding: github_binding.Binding | None
     if arguments.operation == "setup":
         if arguments.check:
             binding = github_binding.Binding.load(
-                arguments.root / ".agents/github-access.json"
+                arguments.root / ".agents/github-access.json", platform
             )
-            binding.check(arguments.root, Path(__file__).resolve().parent)
+            binding.check(arguments.root, Path(__file__).resolve().parent, platform)
         else:
             if arguments.profile is None:
                 raise access_core.AccessError(
@@ -186,6 +180,7 @@ def dispatch(arguments: argparse.Namespace) -> int:
                 arguments.root,
                 state_root(),
                 Path(__file__).resolve().parent,
+                platform,
             )
         print(
             json.dumps(
@@ -198,8 +193,8 @@ def dispatch(arguments: argparse.Namespace) -> int:
         )
         return 0
     if arguments.operation in {"gh", "git", "credential"}:
-        binding = selected_binding(arguments.binding)
-        profile = binding.validate(Path.cwd())
+        binding = selected_binding(arguments.binding, platform)
+        profile = binding.validate(Path.cwd(), platform)
         state = access_core.State(binding.state_root, profile)
         vault = access_core.GCMVault(profile, os.environ)
         command = arguments.arguments
@@ -221,7 +216,7 @@ def dispatch(arguments: argparse.Namespace) -> int:
             profile,
             state,
             vault,
-            real_gh(),
+            platform.real_gh(),
             command,
             default_repository=git_read(Path.cwd(), ["remote", "get-url", "origin"]),
         )
@@ -229,12 +224,14 @@ def dispatch(arguments: argparse.Namespace) -> int:
         sys.stderr.write(result.stderr)
         return result.returncode
     binding = (
-        selected_binding(arguments.binding) if arguments.binding is not None else None
+        selected_binding(arguments.binding, platform)
+        if arguments.binding is not None
+        else None
     )
     if arguments.profile is not None and binding is not None:
         raise access_core.AccessError("scope-ambiguous: use one profile or binding")
     if binding is not None:
-        profile = binding.validate(Path.cwd())
+        profile = binding.validate(Path.cwd(), platform)
     elif arguments.profile is not None:
         profile = access_core.Profile.load(arguments.profile)
     else:
@@ -253,7 +250,7 @@ def dispatch(arguments: argparse.Namespace) -> int:
             profile, access_core.GitHubAPI(vault.read(version))
         )
         if binding is not None:
-            verify_tools(binding, profile, state, vault)
+            verify_tools(binding, profile, state, vault, platform)
     else:
         vault.check()
         evidence = access_core.rotate(
@@ -261,7 +258,9 @@ def dispatch(arguments: argparse.Namespace) -> int:
             state,
             vault,
             access_core.receive_token(profile),
-            after_select=(lambda: verify_tools(binding, profile, state, vault))
+            after_select=(
+                lambda: verify_tools(binding, profile, state, vault, platform)
+            )
             if binding is not None
             else None,
         )
@@ -286,7 +285,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     arguments = parser().parse_args(argv)
     try:
-        return dispatch(arguments)
+        return dispatch(arguments, github_platform.current_platform())
     except (access_core.AccessError, OSError, subprocess.SubprocessError) as error:
         message = (
             str(error)
