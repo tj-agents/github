@@ -138,9 +138,9 @@ def _number(
 
 
 def _metadata(params: dict[str, object], message: str) -> None:
-    metadata = params.get("_meta")
-    if metadata is None:
+    if "_meta" not in params:
         return
+    metadata = params["_meta"]
     if not isinstance(metadata, dict):
         raise MCPError(-32602, f"{message} request is invalid")
     if "progressToken" not in metadata:
