@@ -299,7 +299,7 @@ def test_native_git_local_environment_has_no_credential_or_transport(
     assert "GITHUB_TOKEN" not in environment
 
 
-def test_native_git_rejects_global_worktree_before_local_mutation(
+def test_native_git_uses_bound_worktree_when_global_worktree_is_outside(
     selected: github_binding.Binding,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -310,11 +310,56 @@ def test_native_git_rejects_global_worktree_before_local_mutation(
     home.mkdir()
     outside.mkdir()
     (home / ".gitconfig").write_text(
-        "[core]\n\tworktree = " + str(outside) + "\n", encoding="utf-8"
+        '[core]\n\tworktree = "' + outside.as_posix() + '"\n', encoding="utf-8"
     )
     (selected.root / "tracked.txt").write_text("selected\n", encoding="utf-8")
     (outside / "tracked.txt").write_text("outside\n", encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(selected.root)
+
+    assert (
+        github_access.main(
+            ["native-git", "--binding", str(selected.path), "--", "add", "tracked.txt"]
+        )
+        == 0
+    )
+    staged = subprocess.run(
+        [str(selected.git), "show", ":tracked.txt"],
+        cwd=selected.root,
+        env=github_native_git._local_environment(os.environ),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert staged.returncode == 0
+    assert staged.stdout == "selected\n"
+    assert (outside / "tracked.txt").read_text(encoding="utf-8") == "outside\n"
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="Windows does not preserve trailing path spaces"
+)
+def test_native_git_rejects_local_worktree_with_trailing_space_before_mutation(
+    selected: github_binding.Binding,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outside = tmp_path / "employer "
+    outside.mkdir()
+    (selected.root / "tracked.txt").write_text("selected\n", encoding="utf-8")
+    (outside / "tracked.txt").write_text("outside\n", encoding="utf-8")
+    subprocess.run(
+        [
+            str(selected.git),
+            "-C",
+            str(selected.root),
+            "config",
+            "core.worktree",
+            str(outside),
+        ],
+        check=True,
+    )
     monkeypatch.chdir(selected.root)
 
     assert (
@@ -328,46 +373,80 @@ def test_native_git_rejects_global_worktree_before_local_mutation(
     assert (outside / "tracked.txt").read_text(encoding="utf-8") == "outside\n"
 
 
-def test_native_git_allows_bound_relative_worktree_from_subdirectory(
+def test_native_git_accepts_linked_worktree_with_shared_core_worktree(
     selected: github_binding.Binding,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".gitconfig").write_text("[core]\n\tworktree = ..\n", encoding="utf-8")
-    nested = selected.root / "nested"
-    nested.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.chdir(nested)
+    subprocess.run(
+        [
+            str(selected.git),
+            "-C",
+            str(selected.root),
+            "config",
+            "user.name",
+            "Test Worker",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            str(selected.git),
+            "-C",
+            str(selected.root),
+            "config",
+            "user.email",
+            "worker@example.test",
+        ],
+        check=True,
+    )
+    (selected.root / "seed.txt").write_text("seed\n", encoding="utf-8")
+    subprocess.run(
+        [str(selected.git), "-C", str(selected.root), "add", "seed.txt"], check=True
+    )
+    subprocess.run(
+        [str(selected.git), "-C", str(selected.root), "commit", "-m", "seed"],
+        check=True,
+    )
+    linked = tmp_path / "linked"
+    subprocess.run(
+        [
+            str(selected.git),
+            "-C",
+            str(selected.root),
+            "worktree",
+            "add",
+            "--detach",
+            str(linked),
+        ],
+        check=True,
+    )
+    binding = github_binding.bind(
+        tmp_path / "profile.json",
+        linked,
+        tmp_path / "linked-state",
+        Path(github_access.__file__).parent,
+        github_platform.current_platform(),
+    )
+    subprocess.run(
+        [
+            str(selected.git),
+            "-C",
+            str(selected.root),
+            "config",
+            "core.worktree",
+            str(selected.root),
+        ],
+        check=True,
+    )
+    monkeypatch.chdir(linked)
 
     assert (
         github_access.main(
-            ["native-git", "--binding", str(selected.path), "--", "status"]
+            ["native-git", "--binding", str(binding.path), "--", "status"]
         )
         == 0
     )
-
-
-def test_native_git_rejects_relative_worktree_resolving_to_git_directory(
-    selected: github_binding.Binding,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / ".gitconfig").write_text("[core]\n\tworktree = .\n", encoding="utf-8")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.chdir(selected.root)
-
-    assert (
-        github_access.main(
-            ["native-git", "--binding", str(selected.path), "--", "status"]
-        )
-        == 1
-    )
-    assert "binding-invalid" in capsys.readouterr().err
 
 
 def test_native_git_replays_effective_config_for_network_commands(
