@@ -116,7 +116,9 @@ def test_installed_launcher_loads_real_cli_and_rechecks_scope(
     selected: github_binding.Binding,
     tmp_path: Path,
 ) -> None:
-    launcher = github_platform.current_platform().launcher_path(selected.launchers)
+    launcher = github_platform.current_platform().launcher_path(
+        selected.launchers, github_platform.Launcher.GH
+    )
     environment = {
         key: value
         for key, value in os.environ.items()
