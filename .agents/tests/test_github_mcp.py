@@ -2,6 +2,7 @@ import io
 import json
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import access_core
@@ -44,10 +45,25 @@ class Platform:
     def real_gh(self) -> Path:
         return Path()
 
-    def launcher_path(self, launchers: Path) -> Path:
+    def real_git(self) -> Path:
+        return Path()
+
+    def launcher_path(
+        self, launchers: Path, launcher: github_platform.Launcher
+    ) -> Path:
         return launchers
 
-    def launcher_contents(self, script: Path, binding_path: Path) -> bytes:
+    def command_launcher_contents(
+        self, script: Path, arguments: Sequence[str]
+    ) -> bytes:
+        return b""
+
+    def launcher_contents(
+        self,
+        script: Path,
+        binding_path: Path,
+        launcher: github_platform.Launcher,
+    ) -> bytes:
         return b""
 
     def write_launcher(self, path: Path, contents: bytes) -> None:
