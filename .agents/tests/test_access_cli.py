@@ -254,6 +254,49 @@ def test_native_git_local_environment_has_no_credential_or_transport(
     assert "GITHUB_TOKEN" not in environment
 
 
+def test_native_git_replays_effective_config_for_network_commands(
+    selected: github_binding.Binding, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, tuple[object, ...]] = {}
+
+    def effective(
+        executable: Path, cwd: Path, source: object, timeout: float
+    ) -> tuple[tuple[str, str | None], ...]:
+        captured["effective"] = (executable, cwd, source, timeout)
+        return (("core.autocrlf", "false"),)
+
+    def runner(
+        executable: Path,
+        arguments: object,
+        cwd: Path,
+        environment: object,
+    ) -> int:
+        captured["run"] = (executable, arguments, cwd, environment)
+        return 0
+
+    monkeypatch.setattr(
+        github_native_git,
+        "remotes",
+        lambda executable, cwd: {"origin": "https://github.com/employer/private.git"},
+    )
+    monkeypatch.setattr(github_tools, "_effective_git_config", effective)
+    monkeypatch.setattr(github_native_git, "_run", runner)
+    monkeypatch.chdir(selected.root)
+
+    assert (
+        github_native_git.run(
+            selected, ("fetch", "origin"), github_platform.current_platform()
+        )
+        == 0
+    )
+    assert captured["effective"] == (selected.git, selected.root, os.environ, 60)
+    assert captured["run"][:3] == (
+        selected.git,
+        ("-c", "core.autocrlf=false", "fetch", "--recurse-submodules=no", "origin"),
+        selected.root,
+    )
+
+
 @pytest.mark.parametrize(
     "arguments",
     [

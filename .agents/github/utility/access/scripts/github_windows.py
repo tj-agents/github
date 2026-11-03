@@ -5,6 +5,7 @@ import os
 import platform
 import sys
 import zipfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,14 +15,6 @@ if TYPE_CHECKING:
     from github_platform import Launcher
 
 
-def real_git() -> Path:
-    base = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git"
-    for candidate in (base / "cmd/git.exe", base / "bin/git.exe"):
-        if candidate.is_file():
-            return candidate.resolve()
-    raise AccessError("git-unavailable: install Git for Windows")
-
-
 def real_gh() -> Path:
     candidate = (
         Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "GitHub CLI/gh.exe"
@@ -29,6 +22,14 @@ def real_gh() -> Path:
     if candidate.is_file():
         return candidate.resolve()
     raise AccessError("gh-unavailable: install the official GitHub CLI")
+
+
+def real_git() -> Path:
+    root = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git"
+    for candidate in (root / "cmd/git.exe", root / "bin/git.exe"):
+        if candidate.is_file():
+            return candidate.resolve()
+    raise AccessError("git-unavailable: install Git for Windows")
 
 
 def launcher_path(launchers: Path, launcher: Launcher) -> Path:
@@ -59,21 +60,27 @@ def _launcher_stub() -> bytes:
             ) from error
 
 
-def launcher_contents(script: Path, binding: Path, launcher: Launcher) -> bytes:
+def command_launcher_contents(script: Path, arguments: Sequence[str]) -> bytes:
     python = Path(sys.executable).resolve()
     if not python.is_file():
         raise AccessError(
             "binding-invalid: the active Python executable is unavailable"
         )
-    arguments = [str(script), launcher.operation, "--binding", str(binding)]
+    command = [str(script), *arguments]
     main = "import runpy, sys\n"
     main += f"sys.path.insert(0, {str(script.parent)!r})\n"
-    main += f"sys.argv = {arguments!r} + ['--'] + sys.argv[1:]\n"
+    main += f"sys.argv = {command!r} + sys.argv[1:]\n"
     main += f"runpy.run_path({str(script)!r}, run_name='__main__')\n"
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as payload:
         payload.writestr(zipfile.ZipInfo("__main__.py", (1980, 1, 1, 0, 0, 0)), main)
     return _launcher_stub() + f'#!"{python}" -B\n'.encode() + archive.getvalue()
+
+
+def launcher_contents(script: Path, binding: Path, launcher: Launcher) -> bytes:
+    return command_launcher_contents(
+        script, (launcher.operation, "--binding", str(binding), "--")
+    )
 
 
 def write_launcher(path: Path, contents: bytes) -> None:

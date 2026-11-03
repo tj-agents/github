@@ -8,8 +8,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import github_tools
 import pytest
-from access_core import AccessError, Profile
+from access_core import AccessError, Profile, State
+from github_platform import PlatformProtocol, current_platform
 from github_tools import (
     Repository,
     git_credential_response,
@@ -26,7 +28,7 @@ TOKEN = "github_pat_" + "a" * 40
 
 
 @dataclass
-class FakeState:
+class FakeState(State):
     version: str | None = "a" * 32
 
     def active(self) -> str | None:
@@ -57,6 +59,11 @@ def profile() -> Profile:
         ("private-project", "other-project"),
         {"contents": "read"},
     )
+
+
+@pytest.fixture
+def platform() -> PlatformProtocol:
+    return current_platform()
 
 
 @pytest.mark.parametrize(
@@ -385,7 +392,7 @@ def test_gh_validator_emits_repository_view_target_as_positional(
 
 
 def test_gh_runner_validates_before_reading_and_isolates_child_environment(
-    profile: Profile, tmp_path: Path
+    profile: Profile, tmp_path: Path, platform: PlatformProtocol
 ) -> None:
     script = (
         "import os, sys\nprint(os.environ['GH_TOKEN'])\nprint(os.environ['GH_HOST'])\n"
@@ -408,10 +415,11 @@ def test_gh_runner_validates_before_reading_and_isolates_child_environment(
     state = FakeState()
     result = run_gh(
         profile,
-        state,  # type: ignore[arg-type]
+        state,
         vault,
         executable,
         ("pr", "list"),
+        platform=platform,
         cwd=tmp_path,
         default_repository="employer/private-project",
         environment={
@@ -433,7 +441,7 @@ def test_gh_runner_validates_before_reading_and_isolates_child_environment(
 
 
 def test_gh_runner_uses_caller_directory_for_relative_body_file(
-    profile: Profile, tmp_path: Path
+    profile: Profile, tmp_path: Path, platform: PlatformProtocol
 ) -> None:
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")
@@ -454,7 +462,7 @@ def test_gh_runner_uses_caller_directory_for_relative_body_file(
         executable.chmod(0o700)
     result = run_gh(
         profile,
-        FakeState(),  # type: ignore[arg-type]
+        FakeState(),
         FakeVault(),
         executable,
         (
@@ -467,21 +475,25 @@ def test_gh_runner_uses_caller_directory_for_relative_body_file(
             "--head",
             "branch",
         ),
+        platform=platform,
         cwd=tmp_path,
         default_repository="employer/private-project",
     )
     assert result.stdout.splitlines() == ["body", str(tmp_path)]
 
 
-def test_gh_runner_rejects_before_vault_read(profile: Profile, tmp_path: Path) -> None:
+def test_gh_runner_rejects_before_vault_read(
+    profile: Profile, tmp_path: Path, platform: PlatformProtocol
+) -> None:
     vault = FakeVault()
     with pytest.raises(AccessError):
         run_gh(
             profile,
-            FakeState(),  # type: ignore[arg-type]
+            FakeState(),
             vault,
             Path(sys.executable),
             ("auth", "status"),
+            platform=platform,
             cwd=tmp_path,
             default_repository="employer/private-project",
         )
@@ -489,16 +501,17 @@ def test_gh_runner_rejects_before_vault_read(profile: Profile, tmp_path: Path) -
 
 
 def test_gh_runner_rejects_missing_pr_head_before_vault_read(
-    profile: Profile, tmp_path: Path
+    profile: Profile, tmp_path: Path, platform: PlatformProtocol
 ) -> None:
     vault = FakeVault()
     with pytest.raises(AccessError, match="pr create requires --head"):
         run_gh(
             profile,
-            FakeState(),  # type: ignore[arg-type]
+            FakeState(),
             vault,
             Path(sys.executable),
             ("pr", "create", "--title", "title", "--body", "body"),
+            platform=platform,
             cwd=tmp_path,
             default_repository="employer/private-project",
         )
@@ -506,7 +519,10 @@ def test_gh_runner_rejects_missing_pr_head_before_vault_read(
 
 
 def test_gh_runner_honors_explicit_empty_environment(
-    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    profile: Profile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    platform: PlatformProtocol,
 ) -> None:
     captured: dict[str, str] = {}
 
@@ -520,15 +536,88 @@ def test_gh_runner_honors_explicit_empty_environment(
     monkeypatch.setattr("github_tools.subprocess.run", fake_run)
     run_gh(
         profile,
-        FakeState(),  # type: ignore[arg-type]
+        FakeState(),
         FakeVault(),
         Path(sys.executable),
         ("pr", "list"),
+        platform=platform,
         cwd=tmp_path,
         default_repository="employer/private-project",
         environment={},
     )
     assert "AMBIENT_TEST" not in captured
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires the Windows launcher")
+def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
+    profile: Profile, tmp_path: Path, platform: PlatformProtocol
+) -> None:
+    root = git_worktree(tmp_path)
+    git = git_executable()
+    for arguments in (
+        ("config", "user.name", "Synthetic User"),
+        ("config", "user.email", "synthetic@example.invalid"),
+    ):
+        subprocess.run([str(git), "-C", str(root), *arguments], check=True)
+    tracked = root / "tracked.txt"
+    tracked.write_text("before\n", encoding="utf-8")
+    subprocess.run([str(git), "-C", str(root), "add", "tracked.txt"], check=True)
+    subprocess.run(
+        [str(git), "-C", str(root), "commit", "--quiet", "-m", "initial"], check=True
+    )
+    tracked.write_text("after\n", encoding="utf-8")
+    capture = tmp_path / "git-helper.json"
+    helper_payload = tmp_path / "git-helper.py"
+    helper_payload.write_text(
+        "import json, os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['GIT_CHILD_CAPTURE']).write_text(\n"
+        "    json.dumps({key: os.environ.get(key) for key in (\n"
+        "        'GH_TOKEN', 'GITHUB_PERSONAL_ACCESS_TOKEN',\n"
+        "        'GIT_ALLOW_PROTOCOL', 'GIT_NO_LAZY_FETCH'\n"
+        "    )}), encoding='utf-8'\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    helper = tmp_path / "git-helper.cmd"
+    helper.write_text(
+        f'@"{sys.executable}" "{helper_payload}" %*\r\n', encoding="utf-8"
+    )
+    gh_payload = tmp_path / "fake-gh.py"
+    gh_payload.write_text(
+        "import subprocess, sys\n"
+        "raise SystemExit(subprocess.run(['git', 'diff', '--ext-diff']).returncode)\n",
+        encoding="utf-8",
+    )
+    executable = tmp_path / "fake-gh.cmd"
+    executable.write_text(
+        f'@"{sys.executable}" "{gh_payload}" %*\r\n', encoding="utf-8"
+    )
+    result = run_gh(
+        profile,
+        FakeState(),
+        FakeVault(),
+        executable,
+        ("pr", "list"),
+        platform=platform,
+        cwd=root,
+        default_repository="employer/private-project",
+        environment={
+            "PATH": os.environ["PATH"],
+            "SYSTEMROOT": os.environ["SYSTEMROOT"],
+            "GIT_EXTERNAL_DIFF": helper.as_posix(),
+            "GIT_CHILD_CAPTURE": str(capture),
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "sentinel",
+        },
+    )
+    assert result.returncode == 0
+    child = json.loads(capture.read_text(encoding="utf-8"))
+    assert child == {
+        "GH_TOKEN": None,
+        "GITHUB_PERSONAL_ACCESS_TOKEN": None,
+        "GIT_ALLOW_PROTOCOL": "",
+        "GIT_NO_LAZY_FETCH": "1",
+    }
 
 
 def test_git_credential_reader_checks_exact_protocol_host_path_and_login(
@@ -542,7 +631,7 @@ def test_git_credential_reader_checks_exact_protocol_host_path_and_login(
         "employer", "private-project"
     )
     vault = FakeVault()
-    answer = git_credential_response(profile, FakeState(), vault, "get", request)  # type: ignore[arg-type]
+    answer = git_credential_response(profile, FakeState(), vault, "get", request)
     assert answer == f"username=employee\npassword={TOKEN}\n\n"
     assert vault.reads == ["a" * 32]
 
@@ -562,7 +651,7 @@ def test_git_credential_reader_rejects_before_vault(
 ) -> None:
     vault = FakeVault()
     with pytest.raises(AccessError):
-        git_credential_response(profile, FakeState(), vault, "get", credential_request)  # type: ignore[arg-type]
+        git_credential_response(profile, FakeState(), vault, "get", credential_request)
     assert vault.reads == []
 
 
@@ -571,8 +660,8 @@ def test_git_credential_store_and_erase_do_not_read_or_replace_active_credential
 ) -> None:
     vault = FakeVault()
     request = "protocol=https\nhost=github.com\npath=employer/private-project\n"
-    assert git_credential_response(profile, FakeState(), vault, "store", request) == ""  # type: ignore[arg-type]
-    assert git_credential_response(profile, FakeState(), vault, "erase", request) == ""  # type: ignore[arg-type]
+    assert git_credential_response(profile, FakeState(), vault, "store", request) == ""
+    assert git_credential_response(profile, FakeState(), vault, "erase", request) == ""
     assert vault.reads == []
 
 
@@ -737,7 +826,7 @@ def test_git_runner_rejects_unsafe_effective_config_before_network_launch(
     ]
     assert records == [
         {
-            "arguments": ["config", "--includes", "--null", "--name-only", "--list"],
+            "arguments": ["config", "--includes", "--null", "--list"],
             "environment": {"GIT_CONFIG_COUNT": "0", "GIT_CONFIG_VALUE_9": None},
         }
     ]
@@ -794,7 +883,6 @@ def test_git_runner_normalizes_network_commands_and_isolates_network_child(
         "config",
         "--includes",
         "--null",
-        "--name-only",
         "--list",
     ]
     assert records[1]["arguments"] == [
@@ -929,3 +1017,45 @@ def test_git_runner_allows_ordinary_local_config(
         environment={"PATH": os.environ["PATH"]},
     )
     assert result.returncode == 0
+
+
+def test_git_config_snapshot_preserves_home_relative_remote_for_child(
+    profile: Profile, tmp_path: Path
+) -> None:
+    root = git_worktree(tmp_path)
+    original_home = tmp_path / "original-home"
+    original_home.mkdir()
+    (original_home / "remotes.config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/employer/private-project.git\n',
+        encoding="utf-8",
+    )
+    git = git_executable()
+    subprocess.run(
+        [str(git), "-C", str(root), "config", "include.path", "~/remotes.config"],
+        check=True,
+    )
+    source = {"PATH": os.environ["PATH"], "HOME": str(original_home)}
+    entries = github_tools._effective_git_config(git, root, source, 60)
+    assert all(
+        not key.casefold().startswith(("include.", "includeif.")) for key, _ in entries
+    )
+    home = tmp_path / "sanitized-home"
+    home.mkdir()
+    environment = git_environment(source, "helper", home)
+    result = subprocess.run(
+        [
+            str(git),
+            *github_tools._git_config_arguments(entries),
+            "config",
+            "--get",
+            "remote.origin.url",
+        ],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert environment["HOME"] == str(home)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "https://github.com/employer/private-project.git"
