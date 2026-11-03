@@ -37,6 +37,23 @@ class GitInvocation:
     arguments: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class OptionBindings:
+    positionals: tuple[str, ...]
+    options: tuple[str, ...]
+    values: tuple[tuple[str, str], ...]
+    switches: frozenset[str]
+
+    def has_value(self, name: str) -> bool:
+        return any(option == name for option, _ in self.values)
+
+    def value(self, name: str) -> str | None:
+        for option, value in self.values:
+            if option == name:
+                return value
+        return None
+
+
 def _invalid(
     message: str = "tool-invalid: unsupported employer GitHub operation",
 ) -> AccessError:
@@ -134,13 +151,30 @@ def _valid_scalar(value: str) -> bool:
     return bool(_SCALAR.fullmatch(value))
 
 
-def _expect_options(
+_REPEATABLE_VALUE_OPTIONS = frozenset(
+    {
+        "--add-assignee",
+        "--add-label",
+        "--add-reviewer",
+        "--assignee",
+        "--label",
+        "--remove-assignee",
+        "--remove-label",
+        "--remove-reviewer",
+    }
+)
+
+
+def _parse_options(
     arguments: Sequence[str],
     allowed_values: set[str],
     allowed_switches: set[str],
     positional: int | tuple[int, int],
-) -> tuple[str, ...]:
-    selected: list[str] = []
+) -> OptionBindings:
+    positionals: list[str] = []
+    options: list[str] = []
+    values: list[tuple[str, str]] = []
+    switches: set[str] = set()
     index = 0
     while index < len(arguments):
         item = arguments[index]
@@ -150,6 +184,10 @@ def _expect_options(
             )
         if item.startswith("-"):
             if item in allowed_switches:
+                if item in switches:
+                    raise _invalid("argument-invalid: repeated gh option")
+                switches.add(item)
+                options.append(item)
                 index += 1
                 continue
             option, separator, attached = item.partition("=")
@@ -157,25 +195,36 @@ def _expect_options(
                 if separator:
                     if not _valid_scalar(attached):
                         raise _invalid("argument-invalid: invalid option value")
+                    value = attached
+                    options.append(item)
                     index += 1
-                    continue
-                if index + 1 == len(arguments) or not _valid_scalar(
-                    arguments[index + 1]
+                else:
+                    if index + 1 == len(arguments) or not _valid_scalar(
+                        arguments[index + 1]
+                    ):
+                        raise _invalid("argument-invalid: missing option value")
+                    value = arguments[index + 1]
+                    options.extend((item, value))
+                    index += 2
+                if option not in _REPEATABLE_VALUE_OPTIONS and any(
+                    name == option for name, _ in values
                 ):
-                    raise _invalid("argument-invalid: missing option value")
-                index += 2
+                    raise _invalid("argument-invalid: repeated gh option")
+                values.append((option, value))
                 continue
             raise _invalid("argument-invalid: unsupported gh option")
         if not _valid_scalar(item):
             raise _invalid("argument-invalid: invalid gh argument")
-        selected.append(item)
+        positionals.append(item)
         index += 1
     minimum, maximum = (
         positional if isinstance(positional, tuple) else (positional, positional)
     )
-    if not minimum <= len(selected) <= maximum:
+    if not minimum <= len(positionals) <= maximum:
         raise _invalid("argument-invalid: unsupported gh command argument count")
-    return tuple(selected)
+    return OptionBindings(
+        tuple(positionals), tuple(options), tuple(values), frozenset(switches)
+    )
 
 
 _READ_COMMANDS: dict[
@@ -291,7 +340,7 @@ _WRITE_COMMANDS: dict[
     ),
     ("pr", "comment"): (
         {"--body", "--body-file"},
-        {"--create-if-none", "--edit-last", "--delete-last"},
+        {"--create-if-none", "--edit-last"},
         (0, 1),
     ),
     ("pr", "ready"): (set(), {"--undo"}, 1),
@@ -329,26 +378,10 @@ _WRITE_COMMANDS: dict[
     ),
     ("issue", "comment"): (
         {"--body", "--body-file"},
-        {"--create-if-none", "--edit-last", "--delete-last"},
+        {"--create-if-none", "--edit-last"},
         1,
     ),
 }
-
-
-def _option_present(arguments: Sequence[str], names: set[str]) -> bool:
-    return any(
-        item in names or any(item.startswith(name + "=") for name in names)
-        for item in arguments
-    )
-
-
-def _option_value(arguments: Sequence[str], name: str) -> str | None:
-    for index, item in enumerate(arguments):
-        if item == name and index + 1 < len(arguments):
-            return arguments[index + 1]
-        if item.startswith(name + "="):
-            return item.removeprefix(name + "=")
-    return None
 
 
 def _validate_pr_issue_reference(
@@ -401,36 +434,36 @@ def _validate_positionals(
         raise _invalid("argument-invalid: this command does not accept GitHub URLs")
 
 
-def _validate_noninteractive(
-    group: str, command: str, arguments: Sequence[str]
-) -> None:
-    body = _option_present(arguments, {"--body", "--body-file"})
+def _validate_noninteractive(group: str, command: str, options: OptionBindings) -> None:
+    body = options.has_value("--body") or options.has_value("--body-file")
     if group == "pr" and command == "create":
-        if not _option_present(arguments, {"--title"}) and not _option_present(
-            arguments, {"--fill", "--fill-first", "--fill-verbose"}
-        ):
+        fill = bool(options.switches & {"--fill", "--fill-first", "--fill-verbose"})
+        if not options.has_value("--title") and not fill:
             raise _invalid("argument-invalid: pr create requires --title or --fill")
-        if not body and not _option_present(
-            arguments, {"--fill", "--fill-first", "--fill-verbose"}
-        ):
+        if not body and not fill:
             raise _invalid("argument-invalid: pr create requires --body or --fill")
     if group == "pr" and command == "comment" and not body:
         raise _invalid("argument-invalid: pr comment requires --body or --body-file")
-    if group == "issue" and command == "create" and not body:
-        raise _invalid("argument-invalid: issue create requires --body or --body-file")
+    if group == "issue" and command == "create":
+        if not options.has_value("--title"):
+            raise _invalid("argument-invalid: issue create requires --title")
+        if not body:
+            raise _invalid(
+                "argument-invalid: issue create requires --body or --body-file"
+            )
     if group == "issue" and command == "comment" and not body:
         raise _invalid("argument-invalid: issue comment requires --body or --body-file")
     if group == "pr" and command == "review":
         actions = {"--approve", "--comment", "--request-changes"}
-        if sum(_option_present(arguments, {action}) for action in actions) != 1:
+        if len(options.switches & actions) != 1:
             raise _invalid("argument-invalid: pr review requires one review action")
-        if _option_present(arguments, {"--comment", "--request-changes"}) and not body:
+        if options.switches & {"--comment", "--request-changes"} and not body:
             raise _invalid(
                 "argument-invalid: review comment requires --body or --body-file"
             )
     if group == "pr" and command == "merge":
         actions = {"--auto", "--disable-auto", "--merge", "--rebase", "--squash"}
-        if sum(_option_present(arguments, {action}) for action in actions) != 1:
+        if len(options.switches & actions) != 1:
             raise _invalid("argument-invalid: pr merge requires one merge action")
 
 
@@ -528,16 +561,18 @@ def validate_gh_command(
     rule = _READ_COMMANDS.get((group, command)) or _WRITE_COMMANDS.get((group, command))
     if rule is None:
         raise _invalid("command-denied: use a supported employer gh command")
-    positionals = _expect_options(trailing, *rule)
-    _validate_positionals(profile, repository, group, command, positionals)
-    head = _option_value(trailing, "--head")
+    options = _parse_options(trailing, *rule)
+    _validate_positionals(profile, repository, group, command, options.positionals)
+    head = options.value("--head")
     if head is not None and ":" in head:
-        owner, _, branch = head.partition(":")
-        if not branch or owner.casefold() != profile.organization.casefold():
-            raise _invalid(
-                "repository-denied: --head owner must be the employer organization"
-            )
-    _validate_noninteractive(group, command, trailing)
+        raise _invalid(
+            "argument-invalid: --head must name a branch in the selected repository"
+        )
+    _validate_noninteractive(group, command, options)
+    if group == "repo" and command == "view":
+        return GhInvocation(
+            repository, (group, command, *options.options, repository.slug)
+        )
     return GhInvocation(
         repository, (group, command, *trailing, "--repo", repository.slug)
     )
@@ -603,6 +638,7 @@ def run_gh(
     executable: Path,
     arguments: Sequence[str],
     *,
+    cwd: Path,
     default_repository: str | None = None,
     environment: Mapping[str, str] | None = None,
     timeout: float = 60,
@@ -610,6 +646,8 @@ def run_gh(
     invocation = validate_gh_command(
         profile, arguments, default_repository=default_repository
     )
+    if not cwd.is_absolute() or not cwd.is_dir():
+        raise _invalid("cwd-invalid: pass an existing absolute gh working directory")
     if not executable.is_absolute() or not executable.is_file():
         raise _invalid("launcher-invalid: pass the real absolute gh executable")
     token = _active_token(state, vault)
@@ -620,7 +658,7 @@ def run_gh(
                 text=True,
                 capture_output=True,
                 check=False,
-                cwd=directory,
+                cwd=cwd,
                 env=_child_environment(environment or os.environ, token, directory),
                 timeout=timeout,
             )
