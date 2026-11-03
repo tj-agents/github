@@ -5,6 +5,7 @@ import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import access_core
 import github_access
@@ -504,10 +505,23 @@ def test_mcp_entry_uses_utf8_for_windows_pipes(tmp_path: Path) -> None:
     ]
 
 
-def test_mcp_recovers_after_nested_json_parse_error() -> None:
+def test_mcp_recovers_after_nested_json_parse_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     output = io.StringIO()
     depth = sys.getrecursionlimit() * 5
     nested = "[" * depth + "0" + "]" * depth
+    loader = json.loads
+    raised = False
+
+    def load(value: str, **kwargs: Any) -> Any:
+        nonlocal raised
+        if not raised and value == nested + "\n":
+            raised = True
+            raise RecursionError
+        return loader(value, **kwargs)
+
+    monkeypatch.setattr(json, "loads", load)
     github_mcp_stdio.serve(
         binding(),
         Platform(),
