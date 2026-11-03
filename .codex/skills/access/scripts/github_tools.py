@@ -14,6 +14,10 @@ from github_platform import Launcher, PlatformProtocol
 _NAME = re.compile(r"[A-Za-z0-9_.-]{1,100}")
 _SCALAR = re.compile(r"[^\x00\r\n]{1,4096}")
 _KEY_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}=[^\x00\r\n]{0,4096}")
+_CONFIG_ISOLATION = (
+    "git-config-isolation: effective configuration changed after HOME isolation; "
+    "use HOME-independent configuration"
+)
 _UNSAFE_REMOTE_CONFIG_SUFFIXES = frozenset(
     {
         "proxy",
@@ -1078,9 +1082,12 @@ def _config_file(
         relative = origin.relative_to(home)
     except ValueError:
         return None
-    if any(part in {"", ".", ".."} for part in relative.parts) or (
-        len(relative.parts) == 1 and relative.name.casefold() in {".netrc", "_netrc"}
-    ):
+    if any(part in {"", ".", ".."} for part in relative.parts) or not relative.parts:
+        raise AccessError("git-config-unsafe")
+    if relative.parts[0].split(":", 1)[0].rstrip(" .").casefold() in {
+        ".netrc",
+        "_netrc",
+    }:
         raise AccessError("git-config-unsafe")
     cursor = home
     for part in relative.parts:
@@ -1092,9 +1099,14 @@ def _config_file(
     resolved_home = home.resolve(strict=False)
     resolved_origin = origin.resolve()
     try:
-        resolved_origin.relative_to(resolved_home)
+        resolved_relative = resolved_origin.relative_to(resolved_home)
     except ValueError as error:
         raise AccessError("git-config-unsafe") from error
+    if resolved_relative.name.split(":", 1)[0].rstrip(" .").casefold() in {
+        ".netrc",
+        "_netrc",
+    }:
+        raise AccessError("git-config-unsafe")
     contents = origin.read_bytes()
     _validate_config_contents(executable, contents, source, timeout)
     return GitConfigFile(origin, relative, contents)
@@ -1125,8 +1137,15 @@ def _hooks_path(
         raise AccessError("git-config-unsafe") from error
     if result.returncode == 1:
         return None
-    values = [value for value in result.stdout.split("\0") if value]
-    if result.returncode or len(values) != 1 or not _valid_scalar(values[0]):
+    values = result.stdout.split("\0")
+    if values[-1:] != [""]:
+        raise AccessError("git-config-unsafe")
+    values = values[:-1]
+    if (
+        result.returncode
+        or len(values) != 1
+        or (values[0] and not _valid_scalar(values[0]))
+    ):
         raise AccessError("git-config-unsafe")
     return values[0]
 
@@ -1178,16 +1197,14 @@ def _verify_config_snapshot(
     if _config_signature(
         _config_entries(executable, cwd, source, timeout)
     ) != _config_signature(snapshot.entries):
-        raise AccessError("git-config-isolation: effective configuration changed")
+        raise AccessError(_CONFIG_ISOLATION)
     for file in snapshot.files:
         try:
             unchanged = file.source.read_bytes() == file.contents
         except OSError as error:
-            raise AccessError(
-                "git-config-isolation: effective configuration changed"
-            ) from error
+            raise AccessError(_CONFIG_ISOLATION) from error
         if not unchanged:
-            raise AccessError("git-config-isolation: effective configuration changed")
+            raise AccessError(_CONFIG_ISOLATION)
 
 
 def _normalized_git_arguments(
@@ -1258,9 +1275,7 @@ def run_git(
                     timeout,
                 )
                 if _config_signature(isolated) != _config_signature(snapshot.entries):
-                    raise AccessError(
-                        "git-config-isolation: effective configuration changed"
-                    )
+                    raise AccessError(_CONFIG_ISOLATION)
                 _verify_config_snapshot(executable, cwd, source, snapshot, timeout)
             return subprocess.run(
                 [
