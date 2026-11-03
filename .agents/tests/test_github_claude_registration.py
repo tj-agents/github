@@ -103,6 +103,27 @@ def test_unknown_environment_token_is_skipped_without_decoding(
     assert secret not in decoded
 
 
+@pytest.mark.parametrize("indent", [None, 2])
+def test_unrelated_objects_accept_whitespace_between_members(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, indent: int | None
+) -> None:
+    profile = tmp_path / "claude.json"
+    root = tmp_path / "worktree"
+    root.mkdir()
+    value = document(root, registration())
+    value["unrelated"] = {"first": "ignored-one", "second": {"a": 1, "b": 2}}
+    profile.write_text(json.dumps(value, indent=indent), encoding="utf-8")
+    loads = json.loads
+
+    def reject_unrelated(value: str | bytes, *args: Any, **kwargs: Any) -> Any:
+        result = loads(value, *args, **kwargs)
+        assert result != "ignored-one"
+        return result
+
+    monkeypatch.setattr("github_claude_registration.json.loads", reject_unrelated)
+    assert registration_state(profile, root, expected()) is RegistrationState.CURRENT
+
+
 def test_normalized_project_aliases_are_rejected(tmp_path: Path) -> None:
     profile = tmp_path / "claude.json"
     root = tmp_path / "worktree"

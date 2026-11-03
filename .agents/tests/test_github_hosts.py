@@ -141,6 +141,28 @@ def test_codex_replaces_changed_binding_and_refuses_inline_ancestor(
 
 
 @pytest.mark.parametrize(
+    "original",
+    [
+        'model = "x"',
+        "[shell_environment_policy.set]",
+        '[[skills.config]]\npath = "local-skill"\nenabled = false\n',
+        '[[skills.config]]\npath = "first"\n[[skills.config]]\npath = "second"',
+    ],
+    ids=["root-no-newline", "header-no-newline", "array-table", "repeated-array-table"],
+)
+def test_codex_preserves_valid_configuration_forms(
+    binding: Binding, original: str
+) -> None:
+    before = tomllib.loads(original)
+    updated = render_codex(original, command(binding))
+    after = tomllib.loads(updated)
+    for key, value in before.items():
+        if key != "shell_environment_policy":
+            assert after[key] == value
+    assert render_codex(updated, command(binding)) == updated
+
+
+@pytest.mark.parametrize(
     "text",
     [
         '[shell_environment_policy]\ninclude_only = ["PATH"]\n',

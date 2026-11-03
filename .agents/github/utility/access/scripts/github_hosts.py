@@ -173,9 +173,14 @@ def _header_path(text: str) -> tuple[str, ...]:
         raise SettingsError("Cannot parse a Codex TOML table header") from error
     path: list[str] = []
     current: object = document
-    while isinstance(current, dict) and len(current) == 1:
-        key, current = next(iter(current.items()))
-        path.append(key)
+    while True:
+        if isinstance(current, dict) and len(current) == 1:
+            key, current = next(iter(current.items()))
+            path.append(key)
+        elif isinstance(current, list) and len(current) == 1:
+            current = current[0]
+        else:
+            break
     if not path or current != {}:
         raise SettingsError("Cannot identify a Codex TOML table header")
     return tuple(path)
@@ -408,8 +413,12 @@ def render_codex(text: str, command: MCPCommand) -> str:
         kept.append(statement.text)
     newline = "\r\n" if "\r\n" in text else "\n"
     if shell_insert is None:
+        if kept and not kept[-1].endswith(("\r", "\n")):
+            kept[-1] += newline
         kept.append("[shell_environment_policy.set]" + newline)
         shell_insert = len(kept)
+    elif shell_insert and not kept[shell_insert - 1].endswith(("\r", "\n")):
+        kept[shell_insert - 1] += newline
     kept.insert(shell_insert, _render_shell_values(environment, newline))
     prefix = "".join(kept).rstrip("\r\n")
     result = (prefix + newline + newline if prefix else "") + _render_mcp_block(

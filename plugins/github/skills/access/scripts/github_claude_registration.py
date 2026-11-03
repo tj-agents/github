@@ -232,6 +232,7 @@ class _Reader:
             return
         self._unread(initial)
         while True:
+            self._unread(self.whitespace())
             self.string(False)
             if self.whitespace() != 58:
                 raise ValueError
