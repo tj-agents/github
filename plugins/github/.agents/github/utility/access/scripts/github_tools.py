@@ -15,7 +15,7 @@ _SCALAR = re.compile(r"[^\x00\r\n]{1,4096}")
 _KEY_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}=[^\x00\r\n]{0,4096}")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Repository:
     organization: str
     name: str
@@ -25,13 +25,13 @@ class Repository:
         return f"{self.organization}/{self.name}"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class GhInvocation:
     repository: Repository
     arguments: tuple[str, ...]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class GitInvocation:
     repository: Repository | None
     arguments: tuple[str, ...]

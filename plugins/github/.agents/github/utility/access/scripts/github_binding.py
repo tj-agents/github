@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
-import platform
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
-import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from access_core import AccessError, Profile, private_environment
+from github_platform import PlatformProtocol
 from github_tools import git_environment, parse_repository
 
 
@@ -192,83 +190,25 @@ def _runtime_directory(state_root: Path, source_directory: Path) -> Path:
             shutil.rmtree(temporary)
 
 
-def _launcher_stub() -> bytes:
-    import ensurepip
-
-    machine = platform.machine().lower()
-    if machine in {"amd64", "x86_64", "x64"}:
-        name = "t64.exe"
-    elif machine in {"arm64", "aarch64"}:
-        name = "t64-arm.exe"
-    else:
-        raise AccessError(
-            "binding-invalid: unsupported Windows architecture for gh.exe"
-        )
-    wheels = sorted((Path(ensurepip.__file__).parent / "_bundled").glob("pip-*.whl"))
-    if not wheels:
-        raise AccessError("binding-invalid: this Python has no bundled launcher stub")
-    with zipfile.ZipFile(wheels[-1]) as wheel:
-        try:
-            return wheel.read(f"pip/_vendor/distlib/{name}")
-        except KeyError as error:
-            raise AccessError(
-                "binding-invalid: this Python lacks the required launcher stub"
-            ) from error
-
-
-def _windows_launcher(script: Path, binding: Path) -> bytes:
-    python = Path(sys.executable).resolve()
-    if not python.is_file():
-        raise AccessError(
-            "binding-invalid: the active Python executable is unavailable"
-        )
-    arguments = [str(script), "gh", "--binding", str(binding)]
-    main = "import runpy, sys\n"
-    main += f"sys.path.insert(0, {str(script.parent)!r})\n"
-    main += f"sys.argv = {arguments!r} + ['--'] + sys.argv[1:]\n"
-    main += f"runpy.run_path({str(script)!r}, run_name='__main__')\n"
-    archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w") as payload:
-        payload.writestr(zipfile.ZipInfo("__main__.py", (1980, 1, 1, 0, 0, 0)), main)
-    return _launcher_stub() + f'#!"{python}" -B\n'.encode() + archive.getvalue()
-
-
-def _posix_launcher(script: Path, binding: Path) -> bytes:
-    python = Path(sys.executable).resolve()
-    if not python.is_file():
-        raise AccessError(
-            "binding-invalid: the active Python executable is unavailable"
-        )
-    command = f"exec {shlex.quote(str(python))} -B {shlex.quote(str(script))}"
-    command += f' gh --binding {shlex.quote(str(binding))} -- "$@"\n'
-    return ("#!/bin/sh\n" + command).encode()
-
-
 def _launcher_directory(runtime: Path, binding: Path) -> Path:
     key = hashlib.sha256(f"{binding}\0{runtime.name}".encode()).hexdigest()
     return runtime.parent.parent / "bin" / key
 
 
-def _install_launcher(runtime: Path, binding: Path) -> Path:
+def _install_launcher(runtime: Path, binding: Path, platform: PlatformProtocol) -> Path:
     launchers = _launcher_directory(runtime, binding)
     launchers.mkdir(parents=True, mode=0o700, exist_ok=True)
     script = runtime / "github_access.py"
-    if os.name == "nt":
-        launcher = launchers / "gh.exe"
-        expected = _windows_launcher(script, binding)
-    else:
-        launcher = launchers / "gh"
-        expected = _posix_launcher(script, binding)
+    launcher = platform.launcher_path(launchers)
+    expected = platform.launcher_contents(script, binding)
     if launcher.exists() and launcher.read_bytes() != expected:
         raise AccessError("binding-invalid: existing launcher belongs to another root")
     if not launcher.exists():
-        launcher.write_bytes(expected)
-        if os.name != "nt":
-            launcher.chmod(0o755)
+        platform.write_launcher(launcher, expected)
     return launchers
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Binding:
     path: Path
     root: Path
@@ -278,7 +218,7 @@ class Binding:
     launchers: Path
 
     @classmethod
-    def load(cls, path: Path) -> Binding:
+    def load(cls, path: Path, platform: PlatformProtocol) -> Binding:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
@@ -346,18 +286,18 @@ class Binding:
             )
         if binding.runtime.name != _runtime_version(binding.runtime):
             raise AccessError("binding-invalid: selected runtime is incomplete")
-        launcher = binding.launchers / ("gh.exe" if os.name == "nt" else "gh")
+        launcher = platform.launcher_path(binding.launchers)
         if not launcher.is_file():
             raise AccessError("binding-invalid: selected launcher is unavailable")
         return binding
 
-    def validate(self, cwd: Path) -> Profile:
+    def validate(self, cwd: Path, platform: PlatformProtocol) -> Profile:
         if _worktree_root(cwd) != self.root:
             raise AccessError(
                 "binding-invalid: GitHub employer access is bound to another worktree"
             )
         _origin(self.profile, self.root)
-        current = Binding.load(self.path)
+        current = Binding.load(self.path, platform)
         if current != self:
             raise AccessError(
                 "binding-invalid: GitHub employer access selection changed"
@@ -388,12 +328,14 @@ class Binding:
         )
         return environment
 
-    def check(self, root: Path, source_directory: Path) -> None:
+    def check(
+        self, root: Path, source_directory: Path, platform: PlatformProtocol
+    ) -> None:
         if root.expanduser().resolve(strict=False) != self.root:
             raise AccessError(
                 "binding-invalid: setup requires the exact Git worktree root"
             )
-        self.validate(root)
+        self.validate(root, platform)
         expected = (
             self.state_root
             / "github-access"
@@ -403,18 +345,18 @@ class Binding:
         if self.runtime != expected:
             raise AccessError("binding-invalid: selected runtime is stale; run setup")
         script = self.runtime / "github_access.py"
-        expected_launcher = (
-            _windows_launcher(script, self.path)
-            if os.name == "nt"
-            else _posix_launcher(script, self.path)
-        )
-        launcher = self.launchers / ("gh.exe" if os.name == "nt" else "gh")
+        expected_launcher = platform.launcher_contents(script, self.path)
+        launcher = platform.launcher_path(self.launchers)
         if launcher.read_bytes() != expected_launcher:
             raise AccessError("binding-invalid: selected launcher is stale; run setup")
 
 
 def bind(
-    profile_path: Path, root: Path, state_root: Path, source_directory: Path
+    profile_path: Path,
+    root: Path,
+    state_root: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
 ) -> Binding:
     profile = Profile.load(profile_path)
     requested_root = root.expanduser().resolve(strict=False)
@@ -424,7 +366,7 @@ def bind(
     _origin(profile, exact_root)
     selection = exact_root / ".agents" / "github-access.json"
     if selection.exists():
-        existing = Binding.load(selection)
+        existing = Binding.load(selection, platform)
         if (
             existing.profile.organization.casefold() != profile.organization.casefold()
             or existing.profile.login.casefold() != profile.login.casefold()
@@ -434,7 +376,7 @@ def bind(
                 "employer account"
             )
     runtime = _runtime_directory(state_root, source_directory)
-    launchers = _install_launcher(runtime, selection)
+    launchers = _install_launcher(runtime, selection, platform)
     _atomic_json(
         selection,
         {
@@ -446,4 +388,4 @@ def bind(
             "launchers": str(launchers),
         },
     )
-    return Binding.load(selection)
+    return Binding.load(selection, platform)
