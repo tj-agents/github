@@ -120,6 +120,60 @@ def _worktree_root(
         ) from error
 
 
+def _configured_worktree(
+    executable: Path, cwd: Path, environment: Mapping[str, str]
+) -> Path | None:
+    try:
+        result = subprocess.run(
+            [str(executable), "config", "--path", "--get", "core.worktree"],
+            text=True,
+            capture_output=True,
+            env=environment,
+            cwd=cwd,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError(
+            "binding-invalid: Git is unavailable for execution validation"
+        ) from error
+    if result.returncode == 1:
+        return None
+    if result.returncode:
+        raise AccessError("binding-invalid: inspect the Git execution configuration")
+    value = result.stdout.strip()
+    if not value:
+        raise AccessError("binding-invalid: inspect the Git execution configuration")
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        try:
+            directory = subprocess.run(
+                [str(executable), "rev-parse", "--absolute-git-dir"],
+                text=True,
+                capture_output=True,
+                env=environment,
+                cwd=cwd,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise AccessError(
+                "binding-invalid: Git is unavailable for execution validation"
+            ) from error
+        if directory.returncode or not directory.stdout.strip():
+            raise AccessError(
+                "binding-invalid: inspect the Git execution configuration"
+            )
+        candidate = Path(directory.stdout.strip()) / candidate
+    try:
+        return candidate.resolve(strict=True)
+    except OSError as error:
+        raise AccessError(
+            "binding-invalid: Git execution configuration selects "
+            "an unavailable worktree"
+        ) from error
+
+
 def _origin(profile: Profile, executable: Path, root: Path) -> None:
     fetch = _git(executable, root, "remote", "get-url", "--all", "origin").splitlines()
     push = _git(
@@ -349,6 +403,11 @@ class Binding:
         environment: Mapping[str, str],
     ) -> Profile:
         profile = self.validate(cwd, platform)
+        configured = _configured_worktree(self.git, cwd, environment)
+        if configured is not None and configured != self.root:
+            raise AccessError(
+                "binding-invalid: Git execution configuration selects another worktree"
+            )
         if _worktree_root(self.git, cwd, environment) != self.root:
             raise AccessError(
                 "binding-invalid: GitHub employer access is bound to another worktree"
