@@ -36,6 +36,10 @@ The command uses GCM with Windows Credential Manager, or an explicitly configure
 backend on Linux. An unavailable secure backend fails closed. It never configures a host-wide gh login
 or writes a plaintext credential. Public state holds only a credential version identifier.
 
+Network Git uses an isolated HOME. If effective repository configuration changes under that isolation,
+including HOME-dependent `includeIf` conditions, the command fails closed. Use absolute or
+HOME-independent include conditions for employer Git configuration.
+
 Setup records the exact Git root, employer declaration and immutable runtime in a public binding. Each
 Git/gh invocation rechecks that selection and the employer origin before reading the credential. Leaving
 the selected checkout or changing its origin disables the binding. Git helpers only answer allowlisted
