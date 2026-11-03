@@ -440,7 +440,7 @@ def render_codex(text: str, command: MCPCommand) -> str:
 def _check_path(path: Path) -> None:
     absolute = path.absolute()
     for ancestor in (absolute, *absolute.parents):
-        if ancestor.is_symlink():
+        if ancestor.is_symlink() or ancestor.is_junction():
             raise SettingsError(f"Settings path contains a symlink: {path}")
     if path.exists():
         try:
@@ -482,10 +482,15 @@ def stage_setting(
     return SettingsChange(path, original, updated)
 
 
-def _write_atomic(path: Path, value: bytes) -> None:
+def _write_atomic(path: Path, expected: bytes | None, value: bytes | None) -> None:
     _check_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     _check_path(path)
+    if value is None:
+        if _read(path) != expected:
+            raise SettingsError("Settings changed while writing")
+        path.unlink()
+        return
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=path.name + ".", dir=path.parent
     )
@@ -495,6 +500,8 @@ def _write_atomic(path: Path, value: bytes) -> None:
             stream.write(value)
             stream.flush()
             os.fsync(stream.fileno())
+        if _read(path) != expected:
+            raise SettingsError("Settings changed while writing")
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -509,19 +516,13 @@ def apply_settings(changes: Sequence[SettingsChange]) -> None:
     applied: list[SettingsChange] = []
     try:
         for change in changes:
-            _write_atomic(change.path, change.updated)
+            _write_atomic(change.path, change.original, change.updated)
             applied.append(change)
     except (OSError, SettingsError) as error:
         rollback_failed = False
         for change in reversed(applied):
             try:
-                if _read(change.path) != change.updated:
-                    rollback_failed = True
-                    continue
-                if change.original is None:
-                    change.path.unlink()
-                else:
-                    _write_atomic(change.path, change.original)
+                _write_atomic(change.path, change.updated, change.original)
             except (OSError, SettingsError):
                 rollback_failed = True
         if rollback_failed:

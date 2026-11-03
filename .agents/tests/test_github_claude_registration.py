@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -196,3 +198,44 @@ def test_symlinked_profile_path_fails_closed(tmp_path: Path) -> None:
         pytest.skip("symlinks are unavailable")
     with pytest.raises(AccessError, match="claude-registration-invalid"):
         registration_state(profile, root, expected())
+
+
+def test_junctioned_profile_path_fails_closed_without_reading_target(
+    tmp_path: Path,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows junctions require Windows")
+    target = tmp_path / "isolated-second-checkout"
+    target.mkdir()
+    root = tmp_path / "worktree"
+    root.mkdir()
+    target_profile = target / "claude.json"
+    write_profile(target_profile, document(root, registration()))
+    original = target_profile.read_bytes()
+    junction = tmp_path / "junction"
+    junction_path = str(junction).replace("'", "''")
+    target_path = str(target).replace("'", "''")
+    junction_command = (
+        f"New-Item -ItemType Junction -Path '{junction_path}' "
+        f"-Target '{target_path}'"
+    )
+    completed = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            junction_command,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    try:
+        assert junction.is_junction()
+        with pytest.raises(AccessError, match="claude-registration-invalid"):
+            registration_state(junction / "claude.json", root, expected())
+        assert target_profile.read_bytes() == original
+    finally:
+        junction.rmdir()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tomllib
 from collections.abc import Mapping
@@ -199,3 +200,61 @@ def test_staging_reads_only_target_and_apply_checks_original_and_symlinks(
             pytest.skip("symlinks are unavailable")
         with pytest.raises(SettingsError, match="symlink"):
             stage_setting(NativeHost.CODEX, link / "config.toml", command(binding))
+
+
+def test_apply_preserves_external_edit_made_while_writing(
+    binding: Binding, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / ".codex" / "config.toml"
+    target.parent.mkdir()
+    target.write_text('model = "x"\n', encoding="utf-8")
+    change = stage_setting(NativeHost.CODEX, target, command(binding))
+    assert change is not None
+    fsync = os.fsync
+
+    def edit_target(descriptor: int) -> None:
+        fsync(descriptor)
+        target.write_text('model = "external"\n', encoding="utf-8")
+
+    monkeypatch.setattr("github_hosts.os.fsync", edit_target)
+    with pytest.raises(SettingsError, match="Settings update failed"):
+        apply_settings([change])
+    assert target.read_text(encoding="utf-8") == 'model = "external"\n'
+
+
+def test_junction_ancestor_fails_closed_without_writing_target(
+    binding: Binding, tmp_path: Path
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows junctions require Windows")
+    target = tmp_path / "isolated-second-checkout" / ".codex"
+    target.mkdir(parents=True)
+    settings = target / "config.toml"
+    settings.write_text('model = "x"\n', encoding="utf-8")
+    junction = tmp_path / "junction"
+    junction_path = str(junction).replace("'", "''")
+    target_path = str(target).replace("'", "''")
+    junction_command = (
+        f"New-Item -ItemType Junction -Path '{junction_path}' "
+        f"-Target '{target_path}'"
+    )
+    completed = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            junction_command,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    try:
+        assert junction.is_junction()
+        with pytest.raises(SettingsError, match="symlink"):
+            stage_setting(NativeHost.CODEX, junction / "config.toml", command(binding))
+        assert settings.read_text(encoding="utf-8") == 'model = "x"\n'
+    finally:
+        junction.rmdir()
