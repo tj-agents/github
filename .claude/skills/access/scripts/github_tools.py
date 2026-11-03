@@ -14,6 +14,10 @@ from github_platform import Launcher, PlatformProtocol
 _NAME = re.compile(r"[A-Za-z0-9_.-]{1,100}")
 _SCALAR = re.compile(r"[^\x00\r\n]{1,4096}")
 _KEY_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}=[^\x00\r\n]{0,4096}")
+_CONFIG_ISOLATION = (
+    "git-config-isolation: effective configuration changed after HOME isolation; "
+    "use HOME-independent configuration"
+)
 _UNSAFE_REMOTE_CONFIG_SUFFIXES = frozenset(
     {
         "proxy",
@@ -48,6 +52,28 @@ class GhInvocation:
 class GitInvocation:
     repository: Repository | None
     arguments: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GitConfigEntry:
+    scope: str
+    origin: str
+    key: str
+    value: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class GitConfigFile:
+    source: Path
+    relative: Path
+    contents: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class GitConfigSnapshot:
+    entries: tuple[GitConfigEntry, ...]
+    files: tuple[GitConfigFile, ...]
+    hooks_path: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -645,11 +671,14 @@ def _child_environment(
             "GIT_CONFIG_COUNT": "0",
         }
     )
+    git = platform.real_git(environment)
     launchers = Path(config) / "git-child"
     launchers.mkdir()
     launcher = platform.launcher_path(launchers, Launcher.GIT)
     script = Path(__file__).resolve().with_name("github_git_child.py")
-    platform.write_launcher(launcher, platform.command_launcher_contents(script, ()))
+    platform.write_launcher(
+        launcher, platform.command_launcher_contents(script, (str(git),))
+    )
     path = environment.get("PATH", "")
     environment["PATH"] = str(launchers) + (os.pathsep + path if path else "")
     return environment
@@ -885,9 +914,9 @@ def _unsafe_git_config_key(key: str) -> bool:
     )
 
 
-def _effective_git_config(
+def _config_entries(
     executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
-) -> tuple[tuple[str, str | None], ...]:
+) -> tuple[GitConfigEntry, ...]:
     try:
         result = subprocess.run(
             [
@@ -895,6 +924,8 @@ def _effective_git_config(
                 "config",
                 "--includes",
                 "--null",
+                "--show-scope",
+                "--show-origin",
                 "--list",
             ],
             text=True,
@@ -908,42 +939,284 @@ def _effective_git_config(
         raise AccessError("git-config-unsafe") from error
     if result.returncode:
         raise AccessError("git-config-unsafe")
-    entries: list[tuple[str, str | None]] = []
-    for item in result.stdout.split("\0"):
-        if not item:
-            continue
+    fields = result.stdout.split("\0")
+    entries: list[GitConfigEntry] = []
+    if fields[-1:] != [""] or (len(fields) - 1) % 3:
+        raise AccessError("git-config-unsafe")
+    for index in range(0, len(fields) - 1, 3):
+        scope, origin, item = fields[index : index + 3]
         key, separator, value = item.partition("\n")
         if not key or _unsafe_git_config_key(key):
             raise AccessError("git-config-unsafe")
-        if key.casefold().startswith(("include.", "includeif.")):
-            continue
-        entries.append((key, value if separator else None))
+        entries.append(GitConfigEntry(scope, origin, key, value if separator else None))
     return tuple(entries)
 
 
-def _git_config_arguments(entries: Sequence[tuple[str, str | None]]) -> tuple[str, ...]:
-    arguments: list[str] = []
-    for key, value in entries:
-        arguments.extend(("-c", key if value is None else f"{key}={value}"))
-    return tuple(arguments)
+def _config_home(
+    executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
+) -> Path:
+    try:
+        result = subprocess.run(
+            [
+                str(executable),
+                "config",
+                "--file",
+                os.devnull,
+                "--no-includes",
+                "--null",
+                "--type=path",
+                "--default=~/",
+                "--get",
+                "wrapper.originalHome",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            cwd=cwd,
+            env=_git_config_environment(source),
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError("git-config-unsafe") from error
+    values = [value for value in result.stdout.split("\0") if value]
+    if result.returncode or len(values) != 1:
+        raise AccessError("git-config-unsafe")
+    home = Path(values[0])
+    if not home.is_absolute():
+        raise AccessError("git-config-unsafe")
+    return home.resolve(strict=False)
+
+
+def _repository_config_paths(
+    executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
+) -> tuple[Path, Path]:
+    try:
+        common = subprocess.run(
+            [str(executable), "rev-parse", "--git-common-dir"],
+            text=True,
+            capture_output=True,
+            check=False,
+            cwd=cwd,
+            env=_git_config_environment(source),
+            timeout=timeout,
+        )
+        git_dir = subprocess.run(
+            [str(executable), "rev-parse", "--git-dir"],
+            text=True,
+            capture_output=True,
+            check=False,
+            cwd=cwd,
+            env=_git_config_environment(source),
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError("git-config-unsafe") from error
+    if common.returncode or git_dir.returncode:
+        raise AccessError("git-config-unsafe")
+    common_directory = Path(common.stdout.strip())
+    directory = Path(git_dir.stdout.strip())
+    if not common_directory.is_absolute():
+        common_directory = cwd / common_directory
+    if not directory.is_absolute():
+        directory = cwd / directory
+    return (
+        (common_directory / "config").resolve(strict=False),
+        (directory / "config.worktree").resolve(strict=False),
+    )
+
+
+def _config_origin_path(origin: str, cwd: Path) -> Path | None:
+    if not origin.startswith("file:"):
+        return None
+    path = Path(origin.removeprefix("file:"))
+    return path if path.is_absolute() else cwd / path
+
+
+def _validate_config_contents(
+    executable: Path, contents: bytes, source: Mapping[str, str], timeout: float
+) -> None:
+    try:
+        result = subprocess.run(
+            [
+                str(executable),
+                "config",
+                "--file=-",
+                "--no-includes",
+                "--null",
+                "--list",
+            ],
+            input=contents,
+            text=False,
+            capture_output=True,
+            check=False,
+            env=_git_config_environment(source),
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError("git-config-unsafe") from error
+    if result.returncode:
+        raise AccessError("git-config-unsafe")
+    try:
+        items = result.stdout.decode().split("\0")
+    except UnicodeDecodeError as error:
+        raise AccessError("git-config-unsafe") from error
+    for item in items:
+        if not item:
+            continue
+        key, _, _ = item.partition("\n")
+        if not key or _unsafe_git_config_key(key):
+            raise AccessError("git-config-unsafe")
+
+
+def _config_file(
+    executable: Path,
+    origin: Path,
+    home: Path,
+    excluded: Sequence[Path],
+    source: Mapping[str, str],
+    timeout: float,
+) -> GitConfigFile | None:
+    if origin.resolve(strict=False) in excluded:
+        return None
+    try:
+        relative = origin.relative_to(home)
+    except ValueError:
+        return None
+    if any(part in {"", ".", ".."} for part in relative.parts) or not relative.parts:
+        raise AccessError("git-config-unsafe")
+    if relative.parts[0].split(":", 1)[0].rstrip(" .").casefold() in {
+        ".netrc",
+        "_netrc",
+    }:
+        raise AccessError("git-config-unsafe")
+    cursor = home
+    for part in relative.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            raise AccessError("git-config-unsafe")
+    if not origin.is_file() or origin.is_symlink():
+        raise AccessError("git-config-unsafe")
+    resolved_home = home.resolve(strict=False)
+    resolved_origin = origin.resolve()
+    try:
+        resolved_relative = resolved_origin.relative_to(resolved_home)
+    except ValueError as error:
+        raise AccessError("git-config-unsafe") from error
+    if resolved_relative.name.split(":", 1)[0].rstrip(" .").casefold() in {
+        ".netrc",
+        "_netrc",
+    }:
+        raise AccessError("git-config-unsafe")
+    contents = origin.read_bytes()
+    _validate_config_contents(executable, contents, source, timeout)
+    return GitConfigFile(origin, relative, contents)
+
+
+def _hooks_path(
+    executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
+) -> str | None:
+    try:
+        result = subprocess.run(
+            [
+                str(executable),
+                "config",
+                "--includes",
+                "--null",
+                "--type=path",
+                "--get",
+                "core.hooksPath",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            cwd=cwd,
+            env=_git_config_environment(source),
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError("git-config-unsafe") from error
+    if result.returncode == 1:
+        return None
+    values = result.stdout.split("\0")
+    if values[-1:] != [""]:
+        raise AccessError("git-config-unsafe")
+    values = values[:-1]
+    if (
+        result.returncode
+        or len(values) != 1
+        or (values[0] and not _valid_scalar(values[0]))
+    ):
+        raise AccessError("git-config-unsafe")
+    return values[0]
+
+
+def _effective_git_config(
+    executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
+) -> GitConfigSnapshot:
+    entries = _config_entries(executable, cwd, source, timeout)
+    home = _config_home(executable, cwd, source, timeout)
+    origins = {
+        path
+        for entry in entries
+        if (path := _config_origin_path(entry.origin, cwd)) is not None
+    }
+    excluded = (
+        _repository_config_paths(executable, cwd, source, timeout) if origins else ()
+    )
+    files = tuple(
+        file
+        for origin in origins
+        if (file := _config_file(executable, origin, home, excluded, source, timeout))
+        is not None
+    )
+    return GitConfigSnapshot(
+        entries, files, _hooks_path(executable, cwd, source, timeout)
+    )
+
+
+def _config_signature(
+    entries: Sequence[GitConfigEntry],
+) -> tuple[tuple[str, str, str | None], ...]:
+    return tuple((entry.scope, entry.key, entry.value) for entry in entries)
+
+
+def _mirror_config(snapshot: GitConfigSnapshot, home: Path) -> None:
+    for file in snapshot.files:
+        destination = home / file.relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(file.contents)
+
+
+def _verify_config_snapshot(
+    executable: Path,
+    cwd: Path,
+    source: Mapping[str, str],
+    snapshot: GitConfigSnapshot,
+    timeout: float,
+) -> None:
+    if _config_signature(
+        _config_entries(executable, cwd, source, timeout)
+    ) != _config_signature(snapshot.entries):
+        raise AccessError(_CONFIG_ISOLATION)
+    for file in snapshot.files:
+        try:
+            unchanged = file.source.read_bytes() == file.contents
+        except OSError as error:
+            raise AccessError(_CONFIG_ISOLATION) from error
+        if not unchanged:
+            raise AccessError(_CONFIG_ISOLATION)
 
 
 def _normalized_git_arguments(
-    invocation: GitInvocation, entries: Sequence[tuple[str, str | None]]
+    invocation: GitInvocation, hooks_path: str | None
 ) -> tuple[str, ...]:
     command, *rest = invocation.arguments
-    configuration = () if command == "clone" else _git_config_arguments(entries)
+    hooks = ("-c", f"core.hooksPath={hooks_path}") if hooks_path is not None else ()
     if command == "clone":
-        return (
-            *configuration,
-            command,
-            "--template=",
-            "--no-recurse-submodules",
-            *rest,
-        )
+        return (*hooks, command, "--template=", "--no-recurse-submodules", *rest)
     if command in {"fetch", "pull", "push"}:
-        return (*configuration, command, "--recurse-submodules=no", *rest)
-    return (*configuration, *invocation.arguments)
+        return (*hooks, command, "--recurse-submodules=no", *rest)
+    return (*hooks, *invocation.arguments)
 
 
 def _local_git_environment(source: Mapping[str, str]) -> dict[str, str]:
@@ -985,10 +1258,32 @@ def run_git(
                 env=_local_git_environment(source),
                 timeout=timeout,
             )
-        entries = _effective_git_config(executable, cwd, source, timeout)
         with tempfile.TemporaryDirectory(prefix="github-access-") as home:
+            snapshot = (
+                None
+                if invocation.arguments[0] == "clone"
+                else _effective_git_config(executable, cwd, source, timeout)
+            )
+            if snapshot is None:
+                _config_entries(executable, cwd, source, timeout)
+            else:
+                _mirror_config(snapshot, Path(home))
+                isolated = _config_entries(
+                    executable,
+                    cwd,
+                    {**source, "HOME": str(home)},
+                    timeout,
+                )
+                if _config_signature(isolated) != _config_signature(snapshot.entries):
+                    raise AccessError(_CONFIG_ISOLATION)
+                _verify_config_snapshot(executable, cwd, source, snapshot, timeout)
             return subprocess.run(
-                [str(executable), *_normalized_git_arguments(invocation, entries)],
+                [
+                    str(executable),
+                    *_normalized_git_arguments(
+                        invocation, snapshot.hooks_path if snapshot else None
+                    ),
+                ],
                 text=True,
                 capture_output=True,
                 check=False,

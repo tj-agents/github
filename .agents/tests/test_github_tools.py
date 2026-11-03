@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import github_tools
+import github_windows
 import pytest
 from access_core import AccessError, Profile, State
 from github_platform import PlatformProtocol, current_platform
@@ -534,6 +535,7 @@ def test_gh_runner_honors_explicit_empty_environment(
 
     monkeypatch.setenv("AMBIENT_TEST", "ambient")
     monkeypatch.setattr("github_tools.subprocess.run", fake_run)
+    monkeypatch.setattr(platform, "real_git", lambda environment: Path(sys.executable))
     run_gh(
         profile,
         FakeState(),
@@ -550,7 +552,10 @@ def test_gh_runner_honors_explicit_empty_environment(
 
 @pytest.mark.skipif(os.name != "nt", reason="requires the Windows launcher")
 def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
-    profile: Profile, tmp_path: Path, platform: PlatformProtocol
+    profile: Profile,
+    tmp_path: Path,
+    platform: PlatformProtocol,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = git_worktree(tmp_path)
     git = git_executable()
@@ -593,6 +598,14 @@ def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
     executable.write_text(
         f'@"{sys.executable}" "{gh_payload}" %*\r\n', encoding="utf-8"
     )
+    launched: list[tuple[str, ...]] = []
+    command_launcher_contents = platform.command_launcher_contents
+
+    def capture_launcher(script: Path, arguments: tuple[str, ...]) -> bytes:
+        launched.append(arguments)
+        return command_launcher_contents(script, arguments)
+
+    monkeypatch.setattr(platform, "command_launcher_contents", capture_launcher)
     result = run_gh(
         profile,
         FakeState(),
@@ -618,6 +631,7 @@ def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
         "GIT_ALLOW_PROTOCOL": "",
         "GIT_NO_LAZY_FETCH": "1",
     }
+    assert launched == [(str(git.resolve()),)]
 
 
 def test_git_credential_reader_checks_exact_protocol_host_path_and_login(
@@ -826,7 +840,14 @@ def test_git_runner_rejects_unsafe_effective_config_before_network_launch(
     ]
     assert records == [
         {
-            "arguments": ["config", "--includes", "--null", "--list"],
+            "arguments": [
+                "config",
+                "--includes",
+                "--null",
+                "--show-scope",
+                "--show-origin",
+                "--list",
+            ],
             "environment": {"GIT_CONFIG_COUNT": "0", "GIT_CONFIG_VALUE_9": None},
         }
     ]
@@ -883,6 +904,8 @@ def test_git_runner_normalizes_network_commands_and_isolates_network_child(
         "config",
         "--includes",
         "--null",
+        "--show-scope",
+        "--show-origin",
         "--list",
     ]
     assert records[1]["arguments"] == [
@@ -917,12 +940,22 @@ def test_git_runner_normalizes_network_commands_and_isolates_network_child(
 
 @pytest.mark.parametrize("command", ["fetch", "pull", "push"])
 def test_git_runner_disables_submodule_recursion_for_network_commands(
-    profile: Profile, tmp_path: Path, command: str
+    profile: Profile,
+    tmp_path: Path,
+    command: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     script = (
         "import json, sys\n"
         "if sys.argv[1] != 'config':\n"
         "    print(json.dumps(sys.argv[1:]))\n"
+    )
+    monkeypatch.setattr(
+        github_tools,
+        "_effective_git_config",
+        lambda executable, cwd, source, timeout: github_tools.GitConfigSnapshot(
+            (), (), None
+        ),
     )
     result = run_git(
         profile,
@@ -1035,17 +1068,24 @@ def test_git_config_snapshot_preserves_home_relative_remote_for_child(
         check=True,
     )
     source = {"PATH": os.environ["PATH"], "HOME": str(original_home)}
-    entries = github_tools._effective_git_config(git, root, source, 60)
-    assert all(
-        not key.casefold().startswith(("include.", "includeif.")) for key, _ in entries
+    snapshot = github_tools._effective_git_config(git, root, source, 60)
+    assert any(
+        entry.key.casefold().startswith(("include.", "includeif."))
+        for entry in snapshot.entries
     )
     home = tmp_path / "sanitized-home"
     home.mkdir()
+    github_tools._mirror_config(snapshot, home)
+    isolated = github_tools._config_entries(
+        git, root, {**source, "HOME": str(home)}, 60
+    )
+    assert github_tools._config_signature(isolated) == github_tools._config_signature(
+        snapshot.entries
+    )
     environment = git_environment(source, "helper", home)
     result = subprocess.run(
         [
             str(git),
-            *github_tools._git_config_arguments(entries),
             "config",
             "--get",
             "remote.origin.url",
@@ -1059,3 +1099,358 @@ def test_git_config_snapshot_preserves_home_relative_remote_for_child(
     assert environment["HOME"] == str(home)
     assert result.returncode == 0
     assert result.stdout.strip() == "https://github.com/employer/private-project.git"
+
+
+def _isolated_config_snapshot(
+    root: Path, original_home: Path, isolated_home: Path
+) -> tuple[Path, github_tools.GitConfigSnapshot, dict[str, str]]:
+    git = git_executable()
+    source = {"PATH": os.environ["PATH"], "HOME": str(original_home)}
+    snapshot = github_tools._effective_git_config(git, root, source, 60)
+    github_tools._mirror_config(snapshot, isolated_home)
+    isolated = github_tools._config_entries(
+        git, root, {**source, "HOME": str(isolated_home)}, 60
+    )
+    assert github_tools._config_signature(isolated) == github_tools._config_signature(
+        snapshot.entries
+    )
+    return git, snapshot, source
+
+
+def test_git_config_snapshot_preserves_tracking_and_push_option_cardinality(
+    tmp_path: Path,
+) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    home.mkdir()
+    git = git_executable()
+    for arguments in (
+        ("config", "branch.main.remote", "origin"),
+        ("config", "branch.main.merge", "refs/heads/main"),
+        ("config", "--add", "push.pushOption", "first"),
+        ("config", "--add", "push.pushOption", ""),
+        ("config", "--add", "push.pushOption", "last"),
+    ):
+        subprocess.run([str(git), "-C", str(root), *arguments], check=True)
+    isolated_home = tmp_path / "isolated-home"
+    isolated_home.mkdir()
+    git, _, source = _isolated_config_snapshot(root, home, isolated_home)
+    environment = git_environment(source, "helper", isolated_home)
+    merge = subprocess.run(
+        [str(git), "config", "--get-all", "branch.main.merge"],
+        cwd=root,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    options = subprocess.run(
+        [str(git), "config", "--get-all", "push.pushOption"],
+        cwd=root,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert merge.stdout.splitlines() == ["refs/heads/main"]
+    assert options.stdout.splitlines() == ["first", "", "last"]
+
+
+def test_git_config_snapshot_preserves_nested_home_include_order(
+    tmp_path: Path,
+) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    nested = home / "nested"
+    nested.mkdir(parents=True)
+    (home / "values.config").write_text(
+        "[demo]\n\tvalue = home\n[include]\n\tpath = nested/inner.config\n",
+        encoding="utf-8",
+    )
+    (nested / "inner.config").write_text("[demo]\n\tvalue = nested\n", encoding="utf-8")
+    config = root / ".git" / "config"
+    with config.open("a", encoding="utf-8") as stream:
+        stream.write(
+            "[demo]\n\tvalue = before\n[include]\n\tpath = ~/values.config\n"
+            "[demo]\n\tvalue = after\n"
+        )
+    isolated_home = tmp_path / "isolated-home"
+    isolated_home.mkdir()
+    git, _, source = _isolated_config_snapshot(root, home, isolated_home)
+    result = subprocess.run(
+        [str(git), "config", "--get-all", "demo.value"],
+        cwd=root,
+        env=git_environment(source, "helper", isolated_home),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == ["before", "home", "nested", "after"]
+
+
+def test_git_config_snapshot_rejects_unsafe_nested_include_before_helper(
+    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    nested = home / "nested"
+    nested.mkdir(parents=True)
+    (home / "values.config").write_text(
+        "[include]\n\tpath = nested/unsafe.config\n", encoding="utf-8"
+    )
+    (nested / "unsafe.config").write_text(
+        "[credential]\n\thelper = store\n", encoding="utf-8"
+    )
+    subprocess.run(
+        [
+            str(git_executable()),
+            "-C",
+            str(root),
+            "config",
+            "include.path",
+            "~/values.config",
+        ],
+        check=True,
+    )
+    monkeypatch.setattr(
+        github_tools,
+        "git_environment",
+        lambda source, helper_command, home: (_ for _ in ()).throw(
+            AssertionError("credential helper environment must not be built")
+        ),
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        run_git(
+            profile,
+            git_executable(),
+            ("fetch", "origin"),
+            remotes={"origin": "https://github.com/employer/private-project.git"},
+            helper_command="helper",
+            cwd=root,
+            environment={"PATH": os.environ["PATH"], "HOME": str(home)},
+        )
+
+
+def test_git_runner_rejects_unsafe_nested_config_before_clone_helper(
+    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = git_worktree(tmp_path)
+    included = tmp_path / "included.config"
+    nested = tmp_path / "nested.config"
+    included.write_text(f"[include]\n\tpath = {nested.as_posix()}\n", encoding="utf-8")
+    nested.write_text("[credential]\n\thelper = store\n", encoding="utf-8")
+    subprocess.run(
+        [
+            str(git_executable()),
+            "-C",
+            str(root),
+            "config",
+            "include.path",
+            str(included),
+        ],
+        check=True,
+    )
+    monkeypatch.setattr(
+        github_tools,
+        "git_environment",
+        lambda source, helper_command, home: (_ for _ in ()).throw(
+            AssertionError("credential helper environment must not be built")
+        ),
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        run_git(
+            profile,
+            git_executable(),
+            ("clone", "https://github.com/employer/private-project.git", "clone"),
+            remotes={},
+            helper_command="helper",
+            cwd=root,
+            environment={"PATH": os.environ["PATH"]},
+        )
+
+
+def test_git_config_snapshot_rejects_netrc_destination(
+    tmp_path: Path,
+) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    home.mkdir()
+    (home / "_netrc").write_text("[safe]\n\tvalue = value\n", encoding="utf-8")
+    subprocess.run(
+        [str(git_executable()), "-C", str(root), "config", "include.path", "~/_netrc"],
+        check=True,
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        github_tools._effective_git_config(
+            git_executable(), root, {"PATH": os.environ["PATH"], "HOME": str(home)}, 60
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows path aliases")
+@pytest.mark.parametrize(
+    ("fixture", "alias"),
+    [
+        ("_netrc", "_netrc."),
+        ("_netrc", "_netrc "),
+        (".netrc", ".netrc."),
+        ("_netrc", "_netrc::$DATA"),
+    ],
+)
+def test_git_config_snapshot_rejects_windows_netrc_aliases(
+    tmp_path: Path, fixture: str, alias: str
+) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    home.mkdir()
+    (home / fixture).write_text("[safe]\n\tvalue = value\n", encoding="utf-8")
+    subprocess.run(
+        [
+            str(git_executable()),
+            "-C",
+            str(root),
+            "config",
+            "include.path",
+            f"~/{alias}",
+        ],
+        check=True,
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        github_tools._effective_git_config(
+            git_executable(),
+            root,
+            {"PATH": os.environ["PATH"], "HOME": str(home)},
+            60,
+        )
+
+
+def test_git_config_snapshot_preserves_home_relative_hooks_path(tmp_path: Path) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    hooks = home / "hooks"
+    hooks.mkdir(parents=True)
+    capture = tmp_path / "hook-ran"
+    hook = hooks / "pre-commit"
+    hook.write_text(
+        f'#!/bin/sh\nprintf hook > "{capture.as_posix()}"\n', encoding="utf-8"
+    )
+    hook.chmod(0o755)
+    git = git_executable()
+    for arguments in (
+        ("config", "user.name", "Synthetic User"),
+        ("config", "user.email", "synthetic@example.invalid"),
+        ("config", "core.hooksPath", "~/hooks"),
+    ):
+        subprocess.run([str(git), "-C", str(root), *arguments], check=True)
+    (root / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    subprocess.run([str(git), "-C", str(root), "add", "tracked.txt"], check=True)
+    isolated_home = tmp_path / "isolated-home"
+    isolated_home.mkdir()
+    git, snapshot, source = _isolated_config_snapshot(root, home, isolated_home)
+    result = subprocess.run(
+        [
+            str(git),
+            *github_tools._normalized_git_arguments(
+                github_tools.GitInvocation(None, ("commit", "--quiet", "-m", "hook")),
+                snapshot.hooks_path,
+            ),
+        ],
+        cwd=root,
+        env=git_environment(source, "helper", isolated_home),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert capture.read_text(encoding="utf-8") == "hook"
+
+
+def test_git_config_snapshot_preserves_empty_hooks_path(tmp_path: Path) -> None:
+    root = git_worktree(tmp_path)
+    home = tmp_path / "original-home"
+    home.mkdir()
+    git = git_executable()
+    subprocess.run(
+        [str(git), "-C", str(root), "config", "core.hooksPath", ""], check=True
+    )
+    isolated_home = tmp_path / "isolated-home"
+    isolated_home.mkdir()
+    _, snapshot, _ = _isolated_config_snapshot(root, home, isolated_home)
+    assert snapshot.hooks_path == ""
+    assert github_tools._normalized_git_arguments(
+        github_tools.GitInvocation(
+            Repository("employer", "private-project"), ("fetch", "origin")
+        ),
+        snapshot.hooks_path,
+    ) == ("-c", "core.hooksPath=", "fetch", "--recurse-submodules=no", "origin")
+
+
+def test_git_runner_rejects_home_dependent_include_condition_before_helper(
+    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    root = git_worktree(home / "work")
+    home_config = home / "included.config"
+    home_config.write_text("[safe]\n\tvalue = value\n", encoding="utf-8")
+    config = root / ".git" / "config"
+    with config.open("a", encoding="utf-8") as stream:
+        stream.write('[includeIf "gitdir:~/work/"]\n\tpath = ~/included.config\n')
+    monkeypatch.setattr(
+        github_tools,
+        "git_environment",
+        lambda source, helper_command, home: (_ for _ in ()).throw(
+            AssertionError("credential helper environment must not be built")
+        ),
+    )
+    with pytest.raises(AccessError, match=r"^git-config-isolation:"):
+        run_git(
+            profile,
+            git_executable(),
+            ("fetch", "origin"),
+            remotes={"origin": "https://github.com/employer/private-project.git"},
+            helper_command="helper",
+            cwd=root,
+            environment={"PATH": os.environ["PATH"], "HOME": str(home)},
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows Git resolution")
+def test_windows_git_resolver_uses_custom_path_after_generated_launcher(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    generated = state / "github-access" / "bin"
+    generated.mkdir(parents=True)
+    nested = generated / "binding-key"
+    nested.mkdir()
+    (nested / "git.exe").write_bytes(b"generated")
+    config = tmp_path / "gh-config"
+    child = config / "git-child"
+    child.mkdir(parents=True)
+    (child / "git.exe").write_bytes(b"child")
+    custom = tmp_path / "custom"
+    custom.mkdir()
+    expected = custom / "git.exe"
+    expected.write_bytes(b"custom")
+    assert (
+        github_windows.real_git(
+            {
+                "PATH": os.pathsep.join((str(nested), str(child), str(custom))),
+                "AGENT_STATE_DIRECTORY": str(state),
+                "GH_CONFIG_DIR": str(config),
+            }
+        )
+        == expected.resolve()
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows Git resolution")
+def test_windows_git_resolver_uses_per_user_install(tmp_path: Path) -> None:
+    local_app_data = tmp_path / "local-app-data"
+    expected = local_app_data / "Programs" / "Git" / "cmd" / "git.exe"
+    expected.parent.mkdir(parents=True)
+    expected.write_bytes(b"per-user")
+    assert (
+        github_windows.real_git({"PATH": "", "LOCALAPPDATA": str(local_app_data)})
+        == expected.resolve()
+    )

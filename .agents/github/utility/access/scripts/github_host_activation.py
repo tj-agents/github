@@ -187,10 +187,21 @@ def _register_claude(
                 "host-registration-changed: inspect local Claude registration"
             )
     if state != RegistrationState.CURRENT:
-        arguments = ["add", "--transport", "stdio", "--scope", "local"]
+        arguments = ["add"]
         for key, value in command.environment.items():
             arguments.extend(("--env", f"{key}={value}"))
-        arguments.extend(("employer_github", "--", command.command, *command.args))
+        arguments.extend(
+            (
+                "--transport",
+                "stdio",
+                "--scope",
+                "local",
+                "employer_github",
+                "--",
+                command.command,
+                *command.args,
+            )
+        )
         _claude(executable, binding.root, arguments, base)
     if registration_state(profile, binding.root, desired) != RegistrationState.CURRENT:
         raise AccessError(
