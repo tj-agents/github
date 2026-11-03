@@ -4,4 +4,5 @@ Generated from `.agents/<plugin>/<kind>/<family>/<member>/SKILL.md`; a skill's n
 
 ## github
 
+- `access` — utility — core — `.agents/github/utility/access/SKILL.md`
 - `collaboration` — utility — core — `.agents/github/utility/collaboration/SKILL.md`
