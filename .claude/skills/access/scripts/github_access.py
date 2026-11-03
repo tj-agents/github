@@ -106,6 +106,7 @@ def verify_tools(
     vault: access_core.Vault,
     platform: github_platform.PlatformProtocol,
 ) -> None:
+    profile = binding.validate(Path.cwd(), platform)
     repository = f"{profile.organization}/{profile.verify_repository}"
     result = github_tools.run_gh(
         profile,
@@ -120,6 +121,7 @@ def verify_tools(
         raise access_core.AccessError(
             "gh-check-failed: employer repository read failed"
         )
+    profile = binding.validate(Path.cwd(), platform)
     if run_git(
         binding, profile, ["ls-remote", f"https://github.com/{repository}.git", "HEAD"]
     ):
@@ -255,11 +257,14 @@ def dispatch(
             verify_tools(binding, profile, state, vault, platform)
     else:
         vault.check()
+        token = access_core.receive_token(profile)
+        if binding is not None:
+            profile = binding.validate(Path.cwd(), platform)
         evidence = access_core.rotate(
             profile,
             state,
             vault,
-            access_core.receive_token(profile),
+            token,
             after_select=(
                 lambda: verify_tools(binding, profile, state, vault, platform)
             )

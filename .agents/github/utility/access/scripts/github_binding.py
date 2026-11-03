@@ -14,7 +14,7 @@ from pathlib import Path
 
 from access_core import AccessError, Profile, private_environment
 from github_platform import PlatformProtocol
-from github_tools import git_environment, parse_repository
+from github_tools import git_environment, parse_https_repository
 
 
 def _public_profile(profile: Profile) -> dict[str, object]:
@@ -115,7 +115,7 @@ def _origin(profile: Profile, root: Path) -> None:
             "binding-invalid: origin must have one matching fetch and push URL"
         )
     try:
-        parse_repository(profile, fetch[0])
+        parse_https_repository(profile, fetch[0])
     except AccessError as error:
         raise AccessError(
             "binding-invalid: origin must be an allowlisted HTTPS github.com repository"

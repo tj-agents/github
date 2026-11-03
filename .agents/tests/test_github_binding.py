@@ -117,6 +117,7 @@ def test_bind_writes_exact_public_selection_and_immutable_runtime(
         "https://github.com/other/private-project.git",
         "https://github.com/employer/other-project.git",
         "https://github.com/employer/private-project/extra",
+        "employer/private-project",
     ],
 )
 def test_bind_rejects_non_allowlisted_origin_before_installation(
