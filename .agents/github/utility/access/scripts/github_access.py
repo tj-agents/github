@@ -204,7 +204,7 @@ def dispatch(
         binding = selected_binding(arguments.binding, platform)
         profile = binding.validate(Path.cwd(), platform)
         state = access_core.State(binding.state_root, profile)
-        vault = access_core.GCMVault(profile, os.environ)
+        vault = access_core.GCMVault(profile, os.environ, binding.git)
         command = arguments.arguments
         if command[:1] == ["--"]:
             command = command[1:]
@@ -257,7 +257,11 @@ def dispatch(
     state = access_core.State(
         binding.state_root if binding is not None else state_root(), profile
     )
-    vault = access_core.GCMVault(profile, os.environ)
+    vault = access_core.GCMVault(
+        profile,
+        os.environ,
+        binding.git if binding is not None else platform.real_git(os.environ),
+    )
     if arguments.operation == "check":
         version = state.active()
         if version is None:

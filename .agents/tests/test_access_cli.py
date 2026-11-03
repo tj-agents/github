@@ -299,6 +299,35 @@ def test_native_git_local_environment_has_no_credential_or_transport(
     assert "GITHUB_TOKEN" not in environment
 
 
+def test_native_git_rejects_global_worktree_before_local_mutation(
+    selected: github_binding.Binding,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    home.mkdir()
+    outside.mkdir()
+    (home / ".gitconfig").write_text(
+        "[core]\n\tworktree = " + str(outside) + "\n", encoding="utf-8"
+    )
+    (selected.root / "tracked.txt").write_text("selected\n", encoding="utf-8")
+    (outside / "tracked.txt").write_text("outside\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(selected.root)
+
+    assert (
+        github_access.main(
+            ["native-git", "--binding", str(selected.path), "--", "add", "tracked.txt"]
+        )
+        == 1
+    )
+    assert "binding-invalid" in capsys.readouterr().err
+    assert not (selected.root / ".git" / "index").exists()
+    assert (outside / "tracked.txt").read_text(encoding="utf-8") == "outside\n"
+
+
 def test_native_git_replays_effective_config_for_network_commands(
     selected: github_binding.Binding, monkeypatch: pytest.MonkeyPatch
 ) -> None:
