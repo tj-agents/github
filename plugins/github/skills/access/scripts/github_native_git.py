@@ -192,11 +192,33 @@ def run(
     invocation = github_tools.validate_git_command(
         profile, command, remotes=remotes(binding.git, cwd)
     )
-    entries = github_tools._effective_git_config(binding.git, cwd, os.environ, 60)
     with tempfile.TemporaryDirectory(prefix="github-access-") as home:
+        snapshot = (
+            None
+            if command[0] == "clone"
+            else github_tools._effective_git_config(binding.git, cwd, os.environ, 60)
+        )
+        if snapshot is None:
+            github_tools._config_entries(binding.git, cwd, os.environ, 60)
+        else:
+            github_tools._mirror_config(snapshot, Path(home))
+            isolated = github_tools._config_entries(
+                binding.git, cwd, {**os.environ, "HOME": str(home)}, 60
+            )
+            if github_tools._config_signature(
+                isolated
+            ) != github_tools._config_signature(snapshot.entries):
+                raise access_core.AccessError(
+                    "git-config-isolation: effective configuration changed"
+                )
+            github_tools._verify_config_snapshot(
+                binding.git, cwd, os.environ, snapshot, 60
+            )
         return _run(
             binding.git,
-            github_tools._normalized_git_arguments(invocation, entries),
+            github_tools._normalized_git_arguments(
+                invocation, snapshot.hooks_path if snapshot else None
+            ),
             cwd,
             github_tools.git_environment(
                 os.environ, helper_command(binding), Path(home)

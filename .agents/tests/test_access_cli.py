@@ -261,9 +261,9 @@ def test_native_git_replays_effective_config_for_network_commands(
 
     def effective(
         executable: Path, cwd: Path, source: object, timeout: float
-    ) -> tuple[tuple[str, str | None], ...]:
+    ) -> github_tools.GitConfigSnapshot:
         captured["effective"] = (executable, cwd, source, timeout)
-        return (("core.autocrlf", "false"),)
+        return github_tools.GitConfigSnapshot((), (), None)
 
     def runner(
         executable: Path,
@@ -280,6 +280,9 @@ def test_native_git_replays_effective_config_for_network_commands(
         lambda executable, cwd: {"origin": "https://github.com/employer/private.git"},
     )
     monkeypatch.setattr(github_tools, "_effective_git_config", effective)
+    monkeypatch.setattr(
+        github_tools, "_config_entries", lambda executable, cwd, source, timeout: ()
+    )
     monkeypatch.setattr(github_native_git, "_run", runner)
     monkeypatch.chdir(selected.root)
 
@@ -292,7 +295,7 @@ def test_native_git_replays_effective_config_for_network_commands(
     assert captured["effective"] == (selected.git, selected.root, os.environ, 60)
     assert captured["run"][:3] == (
         selected.git,
-        ("-c", "core.autocrlf=false", "fetch", "--recurse-submodules=no", "origin"),
+        ("fetch", "--recurse-submodules=no", "origin"),
         selected.root,
     )
 
