@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from access_core import AccessError, Profile, State, Vault, private_environment
+from github_platform import Launcher, PlatformProtocol
 
 _NAME = re.compile(r"[A-Za-z0-9_.-]{1,100}")
 _SCALAR = re.compile(r"[^\x00\r\n]{1,4096}")
@@ -610,7 +611,7 @@ def _active_token(state: State, vault: Vault) -> str:
 
 
 def _child_environment(
-    source: Mapping[str, str], token: str, config: str
+    source: Mapping[str, str], token: str, config: str, platform: PlatformProtocol
 ) -> dict[str, str]:
     environment = private_environment(source)
     for key in tuple(environment):
@@ -644,6 +645,13 @@ def _child_environment(
             "GIT_CONFIG_COUNT": "0",
         }
     )
+    launchers = Path(config) / "git-child"
+    launchers.mkdir()
+    launcher = platform.launcher_path(launchers, Launcher.GIT)
+    script = Path(__file__).resolve().with_name("github_git_child.py")
+    platform.write_launcher(launcher, platform.command_launcher_contents(script, ()))
+    path = environment.get("PATH", "")
+    environment["PATH"] = str(launchers) + (os.pathsep + path if path else "")
     return environment
 
 
@@ -660,6 +668,7 @@ def run_gh(
     executable: Path,
     arguments: Sequence[str],
     *,
+    platform: PlatformProtocol,
     cwd: Path,
     default_repository: str | None = None,
     environment: Mapping[str, str] | None = None,
@@ -682,7 +691,7 @@ def run_gh(
                 capture_output=True,
                 check=False,
                 cwd=cwd,
-                env=_child_environment(source, token, directory),
+                env=_child_environment(source, token, directory, platform),
                 timeout=timeout,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
@@ -876,9 +885,9 @@ def _unsafe_git_config_key(key: str) -> bool:
     )
 
 
-def _validate_git_config(
+def _effective_git_config(
     executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
-) -> None:
+) -> tuple[tuple[str, str | None], ...]:
     try:
         result = subprocess.run(
             [
@@ -886,7 +895,6 @@ def _validate_git_config(
                 "config",
                 "--includes",
                 "--null",
-                "--name-only",
                 "--list",
             ],
             text=True,
@@ -898,19 +906,44 @@ def _validate_git_config(
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise AccessError("git-config-unsafe") from error
-    if result.returncode or any(
-        _unsafe_git_config_key(key) for key in result.stdout.split("\0") if key
-    ):
+    if result.returncode:
         raise AccessError("git-config-unsafe")
+    entries: list[tuple[str, str | None]] = []
+    for item in result.stdout.split("\0"):
+        if not item:
+            continue
+        key, separator, value = item.partition("\n")
+        if not key or _unsafe_git_config_key(key):
+            raise AccessError("git-config-unsafe")
+        if key.casefold().startswith(("include.", "includeif.")):
+            continue
+        entries.append((key, value if separator else None))
+    return tuple(entries)
 
 
-def _normalized_git_arguments(invocation: GitInvocation) -> tuple[str, ...]:
+def _git_config_arguments(entries: Sequence[tuple[str, str | None]]) -> tuple[str, ...]:
+    arguments: list[str] = []
+    for key, value in entries:
+        arguments.extend(("-c", key if value is None else f"{key}={value}"))
+    return tuple(arguments)
+
+
+def _normalized_git_arguments(
+    invocation: GitInvocation, entries: Sequence[tuple[str, str | None]]
+) -> tuple[str, ...]:
     command, *rest = invocation.arguments
+    configuration = () if command == "clone" else _git_config_arguments(entries)
     if command == "clone":
-        return (command, "--template=", "--no-recurse-submodules", *rest)
+        return (
+            *configuration,
+            command,
+            "--template=",
+            "--no-recurse-submodules",
+            *rest,
+        )
     if command in {"fetch", "pull", "push"}:
-        return (command, "--recurse-submodules=no", *rest)
-    return invocation.arguments
+        return (*configuration, command, "--recurse-submodules=no", *rest)
+    return (*configuration, *invocation.arguments)
 
 
 def _local_git_environment(source: Mapping[str, str]) -> dict[str, str]:
@@ -952,10 +985,10 @@ def run_git(
                 env=_local_git_environment(source),
                 timeout=timeout,
             )
-        _validate_git_config(executable, cwd, source, timeout)
+        entries = _effective_git_config(executable, cwd, source, timeout)
         with tempfile.TemporaryDirectory(prefix="github-access-") as home:
             return subprocess.run(
-                [str(executable), *_normalized_git_arguments(invocation)],
+                [str(executable), *_normalized_git_arguments(invocation, entries)],
                 text=True,
                 capture_output=True,
                 check=False,

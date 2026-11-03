@@ -9,6 +9,7 @@ from access_core import AccessError
 from github_binding import Binding, bind
 from github_platform import (
     PLATFORMS,
+    Launcher,
     PlatformProtocol,
     SupportedPlatform,
     current_platform,
@@ -253,7 +254,7 @@ def test_installed_launcher_invokes_runtime_entry_with_exact_binding(
         platform,
     )
     capture = tmp_path / "argv.json"
-    launcher = platform.launcher_path(binding.launchers)
+    launcher = platform.launcher_path(binding.launchers, Launcher.GH)
     environment = {"GITHUB_BINDING_CAPTURE": str(capture), "PATH": os.environ["PATH"]}
     result = subprocess.run(
         [str(launcher), "pr", "status"],
