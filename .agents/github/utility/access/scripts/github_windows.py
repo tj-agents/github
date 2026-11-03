@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,10 +24,58 @@ def real_gh() -> Path:
     raise AccessError("gh-unavailable: install the official GitHub CLI")
 
 
-def real_git() -> Path:
-    root = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git"
-    for candidate in (root / "cmd/git.exe", root / "bin/git.exe"):
-        if candidate.is_file():
+def _environment_value(environment: Mapping[str, str], key: str) -> str | None:
+    return next(
+        (
+            value
+            for name, value in environment.items()
+            if name.casefold() == key.casefold()
+        ),
+        None,
+    )
+
+
+def _generated_launchers(environment: Mapping[str, str]) -> tuple[Path, ...]:
+    launchers: list[Path] = []
+    state = _environment_value(environment, "AGENT_STATE_DIRECTORY")
+    if state:
+        launchers.append(Path(state) / "github-access" / "bin")
+    config = _environment_value(environment, "GH_CONFIG_DIR")
+    if config:
+        launchers.append(Path(config) / "git-child")
+    return tuple(launchers)
+
+
+def _is_generated_launcher(candidate: Path, launchers: Sequence[Path]) -> bool:
+    resolved = candidate.resolve(strict=False)
+    for launcher in launchers:
+        try:
+            resolved.relative_to(launcher.resolve(strict=False))
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def real_git(environment: Mapping[str, str]) -> Path:
+    launchers = _generated_launchers(environment)
+    candidates = [
+        Path(directory) / "git.exe"
+        for directory in (_environment_value(environment, "PATH") or "").split(
+            os.pathsep
+        )
+        if directory
+    ]
+    program_files = _environment_value(environment, "PROGRAMFILES")
+    if program_files:
+        root = Path(program_files) / "Git"
+        candidates.extend((root / "cmd/git.exe", root / "bin/git.exe"))
+    local_app_data = _environment_value(environment, "LOCALAPPDATA")
+    if local_app_data:
+        root = Path(local_app_data) / "Programs" / "Git"
+        candidates.extend((root / "cmd/git.exe", root / "bin/git.exe"))
+    for candidate in candidates:
+        if candidate.is_file() and not _is_generated_launcher(candidate, launchers):
             return candidate.resolve()
     raise AccessError("git-unavailable: install Git for Windows")
 
