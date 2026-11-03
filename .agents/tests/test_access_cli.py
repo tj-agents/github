@@ -330,6 +330,48 @@ def test_native_git_rejects_global_worktree_before_local_mutation(
     assert (outside / "tracked.txt").read_text(encoding="utf-8") == "outside\n"
 
 
+def test_native_git_allows_bound_relative_worktree_from_subdirectory(
+    selected: github_binding.Binding,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".gitconfig").write_text("[core]\n\tworktree = ..\n", encoding="utf-8")
+    nested = selected.root / "nested"
+    nested.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(nested)
+
+    assert (
+        github_access.main(
+            ["native-git", "--binding", str(selected.path), "--", "status"]
+        )
+        == 0
+    )
+
+
+def test_native_git_rejects_relative_worktree_resolving_to_git_directory(
+    selected: github_binding.Binding,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".gitconfig").write_text("[core]\n\tworktree = .\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(selected.root)
+
+    assert (
+        github_access.main(
+            ["native-git", "--binding", str(selected.path), "--", "status"]
+        )
+        == 1
+    )
+    assert "binding-invalid" in capsys.readouterr().err
+
+
 def test_native_git_replays_effective_config_for_network_commands(
     selected: github_binding.Binding, monkeypatch: pytest.MonkeyPatch
 ) -> None:
