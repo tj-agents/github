@@ -105,7 +105,7 @@ def parse_repository(profile: Profile, value: str) -> Repository:
     return _repository(profile, organization, name)
 
 
-def _parse_https_repository(profile: Profile, value: str) -> Repository:
+def parse_https_repository(profile: Profile, value: str) -> Repository:
     if not value.startswith("https://github.com/"):
         raise _invalid(
             "repository-invalid: Git network commands require github.com HTTPS"
@@ -550,8 +550,8 @@ def validate_gh_command(
     if not arguments or any(not isinstance(item, str) for item in arguments):
         raise _invalid("argument-invalid: pass a supported gh command")
     explicit, selected = _split_repository_option(arguments)
-    repository = _resolve_repository(profile, explicit, default_repository)
     if selected and selected[0] == "api":
+        repository = _resolve_repository(profile, explicit, default_repository)
         return GhInvocation(
             repository, _validate_api(profile, repository, selected[1:])
         )
@@ -562,6 +562,14 @@ def validate_gh_command(
     if rule is None:
         raise _invalid("command-denied: use a supported employer gh command")
     options = _parse_options(trailing, *rule)
+    positional_repository = (
+        options.positionals[0]
+        if group == "repo" and command == "view" and options.positionals
+        else None
+    )
+    repository = _resolve_repository(
+        profile, explicit, default_repository or positional_repository
+    )
     _validate_positionals(profile, repository, group, command, options.positionals)
     head = options.value("--head")
     if head is not None and ":" in head:
@@ -758,7 +766,7 @@ def validate_git_command(
     if command == "clone":
         if not 1 <= len(rest) <= 2 or rest[0].startswith("-"):
             raise _invalid("git-invalid: clone requires one employer HTTPS URL")
-        repository = _parse_https_repository(profile, rest[0])
+        repository = parse_https_repository(profile, rest[0])
         if len(rest) == 2 and (not _valid_scalar(rest[1]) or rest[1].startswith("-")):
             raise _invalid("git-invalid: invalid clone directory")
         return GitInvocation(repository, tuple(arguments))
@@ -770,9 +778,9 @@ def validate_git_command(
     if remote.startswith("-"):
         raise _invalid("git-invalid: network commands require an employer remote")
     if remote in remotes:
-        repository = _parse_https_repository(profile, remotes[remote])
+        repository = parse_https_repository(profile, remotes[remote])
     elif command in {"fetch", "push", "ls-remote"}:
-        repository = _parse_https_repository(profile, remote)
+        repository = parse_https_repository(profile, remote)
     else:
         raise _invalid("git-invalid: network commands require a declared named remote")
     if any(item.startswith("-") or not _valid_scalar(item) for item in rest[1:]):
