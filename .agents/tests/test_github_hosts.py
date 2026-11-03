@@ -235,8 +235,7 @@ def test_junction_ancestor_fails_closed_without_writing_target(
     junction_path = str(junction).replace("'", "''")
     target_path = str(target).replace("'", "''")
     junction_command = (
-        f"New-Item -ItemType Junction -Path '{junction_path}' "
-        f"-Target '{target_path}'"
+        f"New-Item -ItemType Junction -Path '{junction_path}' -Target '{target_path}'"
     )
     completed = subprocess.run(
         [
