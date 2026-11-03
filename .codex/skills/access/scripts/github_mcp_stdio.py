@@ -70,7 +70,10 @@ def _write(stream: IO[str], value: Mapping[str, object]) -> None:
 
 
 def _read_frame(stream: IO[str]) -> dict[str, object] | None:
-    frame = stream.readline(FRAME_LIMIT + 1)
+    try:
+        frame = stream.readline(FRAME_LIMIT + 1)
+    except (OSError, UnicodeError) as error:
+        raise MCPError(-32700, "invalid JSON-RPC JSON") from error
     if not frame:
         return None
     if len(frame) > FRAME_LIMIT or not frame.endswith("\n"):
@@ -79,7 +82,7 @@ def _read_frame(stream: IO[str]) -> dict[str, object] | None:
         value = json.loads(
             frame, parse_constant=lambda _: (_ for _ in ()).throw(ValueError())
         )
-    except (TypeError, ValueError) as error:
+    except (RecursionError, TypeError, ValueError) as error:
         raise MCPError(-32700, "invalid JSON-RPC JSON") from error
     if not isinstance(value, dict):
         raise MCPError(-32600, "invalid JSON-RPC request")
@@ -132,6 +135,23 @@ def _number(
     ):
         raise MCPError(-32602, "tool arguments are invalid")
     return number
+
+
+def _metadata(params: dict[str, object], message: str) -> None:
+    metadata = params.get("_meta")
+    if metadata is None:
+        return
+    if not isinstance(metadata, dict):
+        raise MCPError(-32602, f"{message} request is invalid")
+    if "progressToken" not in metadata:
+        return
+    progress_token = metadata["progressToken"]
+    if isinstance(progress_token, str):
+        return
+    try:
+        _number(progress_token)
+    except MCPError as error:
+        raise MCPError(-32602, f"{message} request is invalid") from error
 
 
 def _string(value: object) -> str:
@@ -244,8 +264,13 @@ def _upstream_response(value: dict[str, object], identifier: int | str) -> None:
 def _tool_call(
     profile: access_core.Profile, params: dict[str, object]
 ) -> tuple[str, dict[str, object]]:
-    if set(params) != {"name", "arguments"} or not isinstance(params.get("name"), str):
+    if (
+        set(params) - {"name", "arguments", "_meta"}
+        or not {"name", "arguments"} <= set(params)
+        or not isinstance(params.get("name"), str)
+    ):
         raise MCPError(-32602, "tool call is invalid")
+    _metadata(params, "tool call")
     name = params["name"]
     if name not in TOOLS_BY_NAME:
         raise MCPError(-32602, "tool is not available")
@@ -440,7 +465,8 @@ def serve(
             if method == "initialize":
                 if (
                     initialized
-                    or set(params) - {"protocolVersion", "capabilities", "clientInfo"}
+                    or set(params)
+                    - {"protocolVersion", "capabilities", "clientInfo", "_meta"}
                     or not isinstance(params.get("protocolVersion"), str)
                     or params["protocolVersion"] not in SUPPORTED_PROTOCOL_VERSIONS
                     or (
@@ -453,6 +479,7 @@ def serve(
                     )
                 ):
                     raise MCPError(-32602, "initialize request is invalid")
+                _metadata(params, "initialize")
                 protocol_version = params["protocolVersion"]
                 initialized = True
                 _write(
@@ -470,12 +497,14 @@ def serve(
             if not initialized or not notified:
                 raise MCPError(-32600, "initialize the MCP session first")
             if method == "ping":
-                if params != {}:
+                if set(params) - {"_meta"}:
                     raise MCPError(-32602, "ping request is invalid")
+                _metadata(params, "ping")
                 _write(output_stream, _result(identifier, {}))
             elif method == "tools/list":
-                if params != {}:
+                if set(params) - {"_meta"}:
                     raise MCPError(-32602, "tools list request is invalid")
+                _metadata(params, "tools list")
                 _write(output_stream, _result(identifier, {"tools": TOOLS}))
             elif method == "tools/call":
                 name, arguments = _tool_call(binding.profile, params)
