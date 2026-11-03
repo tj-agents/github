@@ -101,6 +101,8 @@ class FakeAPI:
         ("verify_repository", "not-selected"),
         ("permissions", {"admin": "write"}),
         ("permissions", {"contents": "admin"}),
+        ("permissions", {"workflows": "read"}),
+        ("permissions", {"contents": ["write"]}),
         ("expires_in", True),
         ("expires_in", 365),
         ("unexpected", "value"),
@@ -128,6 +130,17 @@ def test_profile_opens_org_specific_fine_grained_form(profile: Profile) -> None:
     assert fields["contents"] == ["write"]
     assert fields["expires_in"] == ["30"]
     assert "token" not in fields
+
+
+def test_profile_accepts_private_organization_configuration_repository(
+    tmp_path: Path,
+    declaration: dict[str, Any],
+) -> None:
+    declaration["repositories"] = [".github-private"]
+    declaration["verify_repository"] = ".github-private"
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(declaration), encoding="utf-8")
+    assert Profile.load(path).repositories == (".github-private",)
 
 
 @pytest.mark.parametrize(
@@ -167,7 +180,7 @@ def test_verify_checks_identity_private_access_and_enabled_reads(
     assert api.calls == [
         "/user",
         "/repos/employer/private-project",
-        "/repos/employer/private-project/git/matching-refs/heads/?per_page=1",
+        "/repos/employer/private-project/branches?per_page=1",
         "/repos/employer/private-project/pulls?state=open&per_page=1",
         "/repos/employer/private-project/actions/runs?per_page=1",
     ]
@@ -201,6 +214,9 @@ def test_verify_does_not_accept_public_access_as_approval_proof(
         (403, {}, "access-denied"),
         (404, {}, "access-denied"),
         (403, {"X-RateLimit-Remaining": "0"}, "rate-limited"),
+        (403, {"x-ratelimit-remaining": "0"}, "rate-limited"),
+        (403, {"retry-after": "30"}, "rate-limited"),
+        (403, {"x-github-sso": "required"}, "sso-required"),
         (429, {}, "rate-limited"),
         (500, {}, "github-unavailable"),
     ],
@@ -340,6 +356,21 @@ def test_local_submission_receives_token_without_echo_or_logs(
     assert token_server.token == TOKEN
     assert TOKEN not in body
     assert TOKEN not in str(capsys.readouterr())
+
+
+def test_local_page_displays_exact_organization_and_repository_allowlist(
+    token_server: TokenServer,
+) -> None:
+    with contextlib.closing(
+        http.client.HTTPConnection("127.0.0.1", token_server.server_port, timeout=3)
+    ) as connection:
+        connection.request("GET", "/test-nonce")
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 200
+        assert "private-project" in body
+        assert "employer" in body
+        assert response.getheader("Cache-Control") == "no-store"
 
 
 @pytest.mark.parametrize(

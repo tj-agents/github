@@ -74,7 +74,7 @@ class Profile:
             raise AccessError("profile-invalid: declare 1 to 100 repository names")
         if any(
             not isinstance(repo, str)
-            or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}", repo)
+            or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", repo)
             or repo in {".", ".."}
             or repo.endswith(".git")
             for repo in repositories
@@ -95,8 +95,15 @@ class Profile:
             or set(permissions) - allowed
         ):
             raise AccessError("profile-invalid: unsupported or empty permissions")
-        if any(value not in {"read", "write"} for value in permissions.values()):
+        if any(
+            not isinstance(value, str) or value not in {"read", "write"}
+            for value in permissions.values()
+        ):
             raise AccessError("profile-invalid: permissions must be read or write")
+        if "workflows" in permissions and permissions["workflows"] != "write":
+            raise AccessError(
+                "profile-invalid: workflows permission supports write only"
+            )
         expiry = data.get("expires_in", 30)
         if type(expiry) is not int or not 1 <= expiry <= 90:
             raise AccessError("profile-invalid: expiry must be 1 to 90 days")
@@ -296,16 +303,17 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def response_error(status: int, headers: Mapping[str, str]) -> AccessError:
+    headers = {key.lower(): value for key, value in headers.items()}
     if status == 401:
         return AccessError(
             "authentication-invalid: rotate the revoked, expired or invalid credential"
         )
     if status == 429 or (
         status == 403
-        and (headers.get("X-RateLimit-Remaining") == "0" or headers.get("Retry-After"))
+        and (headers.get("x-ratelimit-remaining") == "0" or headers.get("retry-after"))
     ):
         return AccessError("rate-limited: wait for GitHub's rate-limit reset and retry")
-    if status == 403 and "required" in headers.get("X-GitHub-SSO", "").lower():
+    if status == 403 and "required" in headers.get("x-github-sso", "").lower():
         return AccessError("sso-required: authorize employer SSO in GitHub and retry")
     if status in {403, 404}:
         return AccessError(
@@ -384,7 +392,7 @@ def verify(profile: Profile, api: ReadAPI) -> list[str]:
             )
         verified.append(f"repository:{repository}")
         probes = {
-            "contents": "/git/matching-refs/heads/?per_page=1",
+            "contents": "/branches?per_page=1",
             "pull_requests": "/pulls?state=open&per_page=1",
             "actions": "/actions/runs?per_page=1",
             "issues": "/issues?per_page=1",
@@ -524,11 +532,13 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
             return
         profile = self.server.profile
         owner, login = html.escape(profile.organization), html.escape(profile.login)
+        repositories = ", ".join(html.escape(repo) for repo in profile.repositories)
         self._send(
             200,
             f"<!doctype html><title>Employer GitHub access</title><h1>{owner}</h1>"
             f"<p>Use GitHub account {login}. Select resource owner {owner} "
             "and only the declared repositories.</p>"
+            f"<p>Repositories: {repositories}</p>"
             '<form method="post"><label>Fine-grained token '
             '<input name="token" type="password" autocomplete="off" required>'
             '</label><p><label><input type="checkbox" name="owner_confirmed" '
