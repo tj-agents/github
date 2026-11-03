@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from access_core import AccessError
+from github_mcp_release import WINDOWS_X64, ReleaseArtifact
 
 if TYPE_CHECKING:
     from github_platform import Launcher
@@ -85,3 +86,10 @@ def launcher_contents(script: Path, binding: Path, launcher: Launcher) -> bytes:
 
 def write_launcher(path: Path, contents: bytes) -> None:
     path.write_bytes(contents)
+
+
+def mcp_release() -> ReleaseArtifact:
+    machine = platform.machine().lower()
+    if machine not in {"amd64", "x86_64", "x64"}:
+        raise AccessError("mcp-unsupported: GitHub MCP supports Windows/Linux x64 only")
+    return WINDOWS_X64
