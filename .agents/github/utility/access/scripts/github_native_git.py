@@ -192,11 +192,11 @@ def run(
     invocation = github_tools.validate_git_command(
         profile, command, remotes=remotes(binding.git, cwd)
     )
-    github_tools._validate_git_config(binding.git, cwd, os.environ, 60)
+    entries = github_tools._effective_git_config(binding.git, cwd, os.environ, 60)
     with tempfile.TemporaryDirectory(prefix="github-access-") as home:
         return _run(
             binding.git,
-            github_tools._normalized_git_arguments(invocation),
+            github_tools._normalized_git_arguments(invocation, entries),
             cwd,
             github_tools.git_environment(
                 os.environ, helper_command(binding), Path(home)

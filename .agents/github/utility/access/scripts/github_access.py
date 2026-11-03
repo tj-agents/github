@@ -86,6 +86,7 @@ def verify_tools(
         vault,
         platform.real_gh(),
         ["api", f"repos/{repository}", "--jq", ".full_name"],
+        platform=platform,
         cwd=binding.root,
         default_repository=repository,
     )
@@ -201,6 +202,7 @@ def dispatch(
             vault,
             platform.real_gh(),
             command,
+            platform=platform,
             cwd=Path.cwd(),
             default_repository=git_read(
                 binding.git, Path.cwd(), ["remote", "get-url", "origin"]

@@ -1,5 +1,5 @@
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
@@ -24,11 +24,15 @@ class Launcher(Enum):
 
 
 class PlatformProtocol(Protocol):
-    def real_git(self) -> Path: ...
-
     def real_gh(self) -> Path: ...
 
+    def real_git(self) -> Path: ...
+
     def launcher_path(self, launchers: Path, launcher: Launcher) -> Path: ...
+
+    def command_launcher_contents(
+        self, script: Path, arguments: Sequence[str]
+    ) -> bytes: ...
 
     def launcher_contents(
         self, script: Path, binding: Path, launcher: Launcher
