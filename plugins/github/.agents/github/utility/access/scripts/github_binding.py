@@ -308,7 +308,7 @@ class Binding:
             )
         if binding.runtime.name != _runtime_version(binding.runtime):
             raise AccessError("binding-invalid: selected runtime is incomplete")
-        if binding.git != platform.real_git():
+        if binding.git != platform.real_git(os.environ):
             raise AccessError("binding-invalid: selected Git executable changed")
         for identity in Launcher:
             launcher = platform.launcher_path(binding.launchers, identity)
@@ -374,7 +374,7 @@ def bind(
     platform: PlatformProtocol,
 ) -> Binding:
     profile = Profile.load(profile_path)
-    git = platform.real_git()
+    git = platform.real_git(os.environ)
     requested_root = root.expanduser().resolve(strict=False)
     exact_root = _worktree_root(git, root)
     if requested_root != exact_root:
