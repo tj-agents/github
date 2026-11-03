@@ -7,6 +7,7 @@ from typing import Protocol
 import github_posix
 import github_windows
 from access_core import AccessError
+from github_mcp_release import ReleaseArtifact
 
 
 class SupportedPlatform(Enum):
@@ -22,6 +23,8 @@ class PlatformProtocol(Protocol):
     def launcher_contents(self, script: Path, binding: Path) -> bytes: ...
 
     def write_launcher(self, path: Path, contents: bytes) -> None: ...
+
+    def mcp_release(self) -> ReleaseArtifact: ...
 
 
 PLATFORMS: Mapping[SupportedPlatform, PlatformProtocol] = {

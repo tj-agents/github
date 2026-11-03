@@ -7,6 +7,7 @@ from pathlib import Path
 import access_core
 import github_access
 import github_binding
+import github_mcp_install
 import github_platform
 import github_tools
 import pytest
@@ -104,8 +105,10 @@ def test_cli_check_requires_explicit_profile_or_binding(
 
 def test_cli_setup_check_uses_selected_source_without_credentials(
     selected: github_binding.Binding,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(github_mcp_install, "check", lambda *arguments: Path("mcp"))
     assert github_access.main(["setup", "--root", str(selected.root), "--check"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["binding"] == str(selected.path)

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import access_core
 import github_binding
+import github_mcp_install
+import github_mcp_stdio
 import github_platform
 import github_tools
 
@@ -147,6 +149,8 @@ def parser() -> argparse.ArgumentParser:
         command = operations.add_parser(operation)
         command.add_argument("--binding", type=Path)
         command.add_argument("arguments", nargs=argparse.REMAINDER)
+    mcp = operations.add_parser("mcp")
+    mcp.add_argument("--binding", type=Path, required=True)
     return result
 
 
@@ -185,6 +189,7 @@ def dispatch(
                 Path(__file__).resolve().parent,
                 platform,
             )
+        github_mcp_install.install(binding.state_root, platform.mcp_release())
         print(
             json.dumps(
                 {
@@ -227,6 +232,9 @@ def dispatch(
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         return result.returncode
+    if arguments.operation == "mcp":
+        binding = selected_binding(arguments.binding, platform)
+        return github_mcp_stdio.serve(binding, platform)
     binding = (
         selected_binding(arguments.binding, platform)
         if arguments.binding is not None
@@ -255,6 +263,7 @@ def dispatch(
         )
         if binding is not None:
             verify_tools(binding, profile, state, vault, platform)
+            github_mcp_install.check(binding.state_root, platform.mcp_release())
     else:
         vault.check()
         token = access_core.receive_token(profile)
