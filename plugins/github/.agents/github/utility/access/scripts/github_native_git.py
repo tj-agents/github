@@ -184,11 +184,13 @@ def run(
     cwd, command = _effective_cwd(arguments, Path.cwd())
     if not command:
         raise access_core.AccessError("git-invalid: pass a supported git command")
-    profile = binding.validate(cwd, platform)
     if command[0] in _LOCAL_COMMANDS:
-        return _run(binding.git, command, cwd, _local_environment(os.environ))
+        environment = _local_environment(os.environ)
+        binding.validate_execution(cwd, platform, environment)
+        return _run(binding.git, command, cwd, environment)
     if command[0] not in _NETWORK_COMMANDS:
         raise access_core.AccessError("git-invalid: pass a supported git command")
+    profile = binding.validate(cwd, platform)
     invocation = github_tools.validate_git_command(
         profile, command, remotes=remotes(binding.git, cwd)
     )
