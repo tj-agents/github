@@ -576,11 +576,12 @@ def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
     helper_payload.write_text(
         "import json, os\n"
         "from pathlib import Path\n"
+        "temp = Path(os.environ['TEMP'])\n"
         "Path(os.environ['GIT_CHILD_CAPTURE']).write_text(\n"
         "    json.dumps({key: os.environ.get(key) for key in (\n"
         "        'GH_TOKEN', 'GITHUB_PERSONAL_ACCESS_TOKEN',\n"
-        "        'GIT_ALLOW_PROTOCOL', 'GIT_NO_LAZY_FETCH'\n"
-        "    )}), encoding='utf-8'\n"
+        "        'GIT_ALLOW_PROTOCOL', 'GIT_NO_LAZY_FETCH', 'TEMP', 'TMP'\n"
+        "    )} | {'TEMP_EXISTS': temp.is_dir()}), encoding='utf-8'\n"
         ")\n",
         encoding="utf-8",
     )
@@ -606,6 +607,7 @@ def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
         return command_launcher_contents(script, arguments)
 
     monkeypatch.setattr(platform, "command_launcher_contents", capture_launcher)
+    caller_temp = tmp_path / "caller-temp"
     result = run_gh(
         profile,
         FakeState(),
@@ -621,16 +623,29 @@ def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
             "GIT_EXTERNAL_DIFF": helper.as_posix(),
             "GIT_CHILD_CAPTURE": str(capture),
             "GITHUB_PERSONAL_ACCESS_TOKEN": "sentinel",
+            "TEMP": str(caller_temp),
+            "TMP": str(caller_temp),
         },
     )
     assert result.returncode == 0
     child = json.loads(capture.read_text(encoding="utf-8"))
-    assert child == {
+    assert {
+        key: child[key]
+        for key in (
+            "GH_TOKEN",
+            "GITHUB_PERSONAL_ACCESS_TOKEN",
+            "GIT_ALLOW_PROTOCOL",
+            "GIT_NO_LAZY_FETCH",
+        )
+    } == {
         "GH_TOKEN": None,
         "GITHUB_PERSONAL_ACCESS_TOKEN": None,
         "GIT_ALLOW_PROTOCOL": "",
         "GIT_NO_LAZY_FETCH": "1",
     }
+    assert child["TEMP"] == child["TMP"]
+    assert child["TEMP"] != str(caller_temp)
+    assert child["TEMP_EXISTS"] is True
     assert launched == [(str(git.resolve()),)]
 
 
