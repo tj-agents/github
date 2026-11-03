@@ -669,6 +669,8 @@ def _child_environment(
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_SYSTEM": os.devnull,
             "GIT_CONFIG_COUNT": "0",
+            "TEMP": config,
+            "TMP": config,
         }
     )
     git = platform.real_git(environment)
