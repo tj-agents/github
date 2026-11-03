@@ -509,7 +509,7 @@ def _check_profile(path: Path) -> None:
             info = candidate.lstat()
         except FileNotFoundError:
             continue
-        if stat.S_ISLNK(info.st_mode):
+        if stat.S_ISLNK(info.st_mode) or candidate.is_junction():
             raise ValueError
     info = absolute.stat()
     if not stat.S_ISREG(info.st_mode):
