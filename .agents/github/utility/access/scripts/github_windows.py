@@ -1,11 +1,25 @@
+from __future__ import annotations
+
 import io
 import os
 import platform
 import sys
 import zipfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from access_core import AccessError
+
+if TYPE_CHECKING:
+    from github_platform import Launcher
+
+
+def real_git() -> Path:
+    base = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git"
+    for candidate in (base / "cmd/git.exe", base / "bin/git.exe"):
+        if candidate.is_file():
+            return candidate.resolve()
+    raise AccessError("git-unavailable: install Git for Windows")
 
 
 def real_gh() -> Path:
@@ -17,8 +31,8 @@ def real_gh() -> Path:
     raise AccessError("gh-unavailable: install the official GitHub CLI")
 
 
-def launcher_path(launchers: Path) -> Path:
-    return launchers / "gh.exe"
+def launcher_path(launchers: Path, launcher: Launcher) -> Path:
+    return launchers / f"{launcher.filename}.exe"
 
 
 def _launcher_stub() -> bytes:
@@ -45,13 +59,13 @@ def _launcher_stub() -> bytes:
             ) from error
 
 
-def launcher_contents(script: Path, binding: Path) -> bytes:
+def launcher_contents(script: Path, binding: Path, launcher: Launcher) -> bytes:
     python = Path(sys.executable).resolve()
     if not python.is_file():
         raise AccessError(
             "binding-invalid: the active Python executable is unavailable"
         )
-    arguments = [str(script), "gh", "--binding", str(binding)]
+    arguments = [str(script), launcher.operation, "--binding", str(binding)]
     main = "import runpy, sys\n"
     main += f"sys.path.insert(0, {str(script.parent)!r})\n"
     main += f"sys.argv = {arguments!r} + ['--'] + sys.argv[1:]\n"

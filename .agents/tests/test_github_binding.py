@@ -9,6 +9,7 @@ from access_core import AccessError
 from github_binding import Binding, bind
 from github_platform import (
     PLATFORMS,
+    Launcher,
     PlatformProtocol,
     SupportedPlatform,
     current_platform,
@@ -94,6 +95,7 @@ def test_bind_writes_exact_public_selection_and_immutable_runtime(
     assert binding.path == root / ".agents" / "github-access.json"
     assert stored["root"] == str(root.resolve())
     assert stored["state_root"] == str(state_root(tmp_path).resolve())
+    assert stored["git"] == str(platform.real_git())
     assert stored["profile"]["organization"] == "employer"
     assert "token" not in binding.path.read_text(encoding="utf-8").casefold()
     assert (
@@ -105,10 +107,33 @@ def test_bind_writes_exact_public_selection_and_immutable_runtime(
         encoding="utf-8"
     ) == "MARKER = 'copied'\n"
     assert binding.validate(root, platform) == binding.profile
+    assert platform.launcher_path(binding.launchers, Launcher.GIT).is_file()
+    assert platform.launcher_path(binding.launchers, Launcher.GH).is_file()
     assert (
         bind(profile_path, root, state_root(tmp_path), source_directory, platform)
         == binding
     )
+
+
+def test_binding_root_checks_use_pinned_git_instead_of_path_shim(
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    platform: PlatformProtocol,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = worktree(tmp_path)
+    shim_directory = tmp_path / "shim"
+    shim_directory.mkdir()
+    shim = shim_directory / ("git.cmd" if os.name == "nt" else "git")
+    if os.name == "nt":
+        shim.write_text("@exit /b 1\r\n", encoding="utf-8")
+    else:
+        shim.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        shim.chmod(0o700)
+    monkeypatch.setenv("PATH", str(shim_directory) + os.pathsep + os.environ["PATH"])
+    binding = bind(profile_path, root, state_root(tmp_path), source_directory, platform)
+    assert binding.validate(root, platform) == binding.profile
 
 
 @pytest.mark.parametrize(
@@ -253,7 +278,7 @@ def test_installed_launcher_invokes_runtime_entry_with_exact_binding(
         platform,
     )
     capture = tmp_path / "argv.json"
-    launcher = platform.launcher_path(binding.launchers)
+    launcher = platform.launcher_path(binding.launchers, Launcher.GH)
     environment = {"GITHUB_BINDING_CAPTURE": str(capture), "PATH": os.environ["PATH"]}
     result = subprocess.run(
         [str(launcher), "pr", "status"],
