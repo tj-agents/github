@@ -172,6 +172,10 @@ def _register_claude(
             "host-registration-conflict: employer_github is already owned"
         )
     _save_receipt(binding, desired, previous)
+    if registration_state(profile, binding.root, desired, previous) != state:
+        raise AccessError(
+            "host-registration-changed: inspect local Claude registration"
+        )
     if state == RegistrationState.PREVIOUS_OWNED:
         _claude(
             executable,

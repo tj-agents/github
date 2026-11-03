@@ -228,6 +228,60 @@ def test_activation_scope_exit_precedes_settings_and_native_operations(
     assert not (selected.root / ".codex/config.toml").exists()
 
 
+def test_claude_ownership_change_after_receipt_preserves_registration(
+    selected: github_binding.Binding,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = Path.home() / ".claude.json"
+    previous = github_host_activation._registration(
+        github_hosts.mcp_command(selected, {"PATH": "previous-tools"})
+    )
+    unrelated = {"type": "stdio", "command": "unrelated", "args": [], "env": {}}
+
+    def write_registration(value: dict[str, object]) -> None:
+        profile.write_text(
+            json.dumps(
+                {
+                    "projects": {
+                        str(selected.root): {"mcpServers": {"employer_github": value}}
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    write_registration(previous)
+    github_host_activation._save_receipt(selected, previous, None)
+    save = github_host_activation._save_receipt
+
+    def changed_after_receipt(
+        binding: github_binding.Binding,
+        desired: Mapping[str, object],
+        old: Mapping[str, object] | None,
+    ) -> None:
+        save(binding, desired, old)
+        write_registration(unrelated)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("changed registration must not be removed")
+
+    monkeypatch.setattr(github_host_activation, "_save_receipt", changed_after_receipt)
+    monkeypatch.setattr(github_host_activation, "_claude", forbidden)
+    with pytest.raises(access_core.AccessError, match="host-registration-changed"):
+        github_host_activation.activate(
+            selected,
+            github_platform.current_platform(),
+            github_hosts.NativeHost.CLAUDE,
+            {"PATH": "current-tools"},
+        )
+    actual = json.loads(profile.read_text(encoding="utf-8"))
+    assert (
+        actual["projects"][str(selected.root)]["mcpServers"]["employer_github"]
+        == unrelated
+    )
+    assert not (selected.root / ".claude/settings.local.json").exists()
+
+
 def test_custom_claude_profile_is_rejected_without_guessing(
     selected: github_binding.Binding,
 ) -> None:
