@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from access_core import AccessError, Profile, private_environment
-from github_platform import PlatformProtocol
+from github_platform import Launcher, PlatformProtocol
 from github_tools import parse_https_repository
 
 
@@ -201,8 +201,8 @@ def _install_launcher(runtime: Path, binding: Path, platform: PlatformProtocol) 
     launchers = _launcher_directory(runtime, binding)
     launchers.mkdir(parents=True, mode=0o700, exist_ok=True)
     script = runtime / "github_access.py"
-    launcher = platform.launcher_path(launchers)
-    expected = platform.launcher_contents(script, binding)
+    launcher = platform.launcher_path(launchers, Launcher.GH)
+    expected = platform.launcher_contents(script, binding, Launcher.GH)
     if launcher.exists() and launcher.read_bytes() != expected:
         raise AccessError("binding-invalid: existing launcher belongs to another root")
     if not launcher.exists():
@@ -288,7 +288,7 @@ class Binding:
             )
         if binding.runtime.name != _runtime_version(binding.runtime):
             raise AccessError("binding-invalid: selected runtime is incomplete")
-        launcher = platform.launcher_path(binding.launchers)
+        launcher = platform.launcher_path(binding.launchers, Launcher.GH)
         if not launcher.is_file():
             raise AccessError("binding-invalid: selected launcher is unavailable")
         return binding
@@ -334,8 +334,8 @@ class Binding:
         if self.runtime != expected:
             raise AccessError("binding-invalid: selected runtime is stale; run setup")
         script = self.runtime / "github_access.py"
-        expected_launcher = platform.launcher_contents(script, self.path)
-        launcher = platform.launcher_path(self.launchers)
+        expected_launcher = platform.launcher_contents(script, self.path, Launcher.GH)
+        launcher = platform.launcher_path(self.launchers, Launcher.GH)
         if launcher.read_bytes() != expected_launcher:
             raise AccessError("binding-invalid: selected launcher is stale; run setup")
 
