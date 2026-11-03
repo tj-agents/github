@@ -73,7 +73,12 @@ def _git_environment(source: Mapping[str, str]) -> dict[str, str]:
     return environment
 
 
-def _git(executable: Path, root: Path, *arguments: str) -> str:
+def _git(
+    executable: Path,
+    root: Path,
+    *arguments: str,
+    environment: Mapping[str, str] | None = None,
+) -> str:
     if not executable.is_absolute() or not executable.is_file():
         raise AccessError("binding-invalid: the selected Git executable is unavailable")
     try:
@@ -81,7 +86,7 @@ def _git(executable: Path, root: Path, *arguments: str) -> str:
             [str(executable), "-C", str(root), *arguments],
             text=True,
             capture_output=True,
-            env=_git_environment(os.environ),
+            env=_git_environment(os.environ) if environment is None else environment,
             timeout=10,
             check=False,
         )
@@ -94,9 +99,17 @@ def _git(executable: Path, root: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def _worktree_root(executable: Path, root: Path) -> Path:
+def _worktree_root(
+    executable: Path, root: Path, environment: Mapping[str, str] | None = None
+) -> Path:
     candidate = root.expanduser().resolve(strict=False)
-    top_level = _git(executable, candidate, "rev-parse", "--show-toplevel")
+    top_level = _git(
+        executable,
+        candidate,
+        "rev-parse",
+        "--show-toplevel",
+        environment=environment,
+    )
     if not top_level:
         raise AccessError("binding-invalid: select an existing Git worktree")
     try:
@@ -328,6 +341,19 @@ class Binding:
                 "binding-invalid: GitHub employer access selection changed"
             )
         return self.profile
+
+    def validate_execution(
+        self,
+        cwd: Path,
+        platform: PlatformProtocol,
+        environment: Mapping[str, str],
+    ) -> Profile:
+        profile = self.validate(cwd, platform)
+        if _worktree_root(self.git, cwd, environment) != self.root:
+            raise AccessError(
+                "binding-invalid: GitHub employer access is bound to another worktree"
+            )
+        return profile
 
     def activation_settings(self, base: Mapping[str, str]) -> dict[str, str]:
         path = next((value for key, value in base.items() if key.upper() == "PATH"), "")
