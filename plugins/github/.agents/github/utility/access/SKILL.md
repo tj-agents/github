@@ -1,0 +1,41 @@
+---
+name: access
+description: Onboard, rotate and check a single employer organization's fine-grained GitHub credential in secure OS storage. Use when configuring employer GitHub access or diagnosing its authentication.
+kind: utility
+domain: github
+profile: core
+applicability: explicitly selected employer GitHub access
+requires: python, git, Git Credential Manager, secure credential backend
+provenance: house
+---
+
+# Employer GitHub access
+
+Use the shipped Python 3.12+ entry point with the employer-owned profile. The profile declares the
+organization, expected GitHub login, verification repository, repository allowlist and permissions.
+Keep employer data in its owning private plugin. Explicit selection and current task authority are
+required; finding an employer's name on disk does not select it.
+
+```text
+python -B <skill-directory>/scripts/github_access.py check --profile <employer-profile.json>
+python -B <skill-directory>/scripts/github_access.py onboard --profile <employer-profile.json>
+python -B <skill-directory>/scripts/github_access.py rotate --profile <employer-profile.json>
+```
+
+Onboarding opens GitHub's fine-grained token form and a temporary local submission page. The human
+creates the token with the displayed organization as resource owner, selects only the declared
+repositories, obtains required organization approval, then pastes into that local page. Never request
+a token in chat, arguments, an environment dump, clipboard automation or a file. Classic tokens and
+account-wide OAuth are not fallbacks. Preserve the active version when candidate verification fails.
+
+The command uses GCM with Windows Credential Manager, or an explicitly configured Secret Service/GPG
+backend on Linux. An unavailable secure backend fails closed. It never configures a host-wide gh login
+or writes a plaintext credential. Public state holds only a credential version identifier.
+
+`check` verifies identity, repository access and declared read capabilities. A successful read does not
+prove write permission or the token's resource-owner selection; the human must confirm the token form,
+and actual authorized operations establish their own permission evidence. A 401 proves invalid
+authentication, not its precise expiry cause. SSO headers, policy/approval ambiguity, rate limiting and
+network failure receive distinct actions. Never relay raw HTTP, GCM or child-process diagnostics that
+could contain a credential. Tool routing and native installation must also pass before claiming full
+Git/gh/MCP readiness.
