@@ -1,0 +1,449 @@
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import os
+import platform
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+from access_core import AccessError, Profile, private_environment
+from github_tools import git_environment, parse_repository
+
+
+def _public_profile(profile: Profile) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "host": "github.com",
+        "organization": profile.organization,
+        "login": profile.login,
+        "verify_repository": profile.verify_repository,
+        "repositories": list(profile.repositories),
+        "permissions": dict(profile.permissions),
+        "expires_in": profile.expires_in,
+    }
+
+
+def _secure_environment(source: Mapping[str, str]) -> dict[str, str]:
+    environment = private_environment(source)
+    return {
+        key: value
+        for key, value in environment.items()
+        if not key.upper().startswith(
+            (
+                "GH_",
+                "GITHUB_",
+                "GIT_CONFIG_",
+                "GIT_TRACE",
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "ALL_PROXY",
+                "NO_PROXY",
+                "PYTHONPATH",
+                "PYTHONSTARTUP",
+            )
+        )
+        and key.upper()
+        not in {
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "PYTHONPATH",
+            "PYTHONSTARTUP",
+        }
+    }
+
+
+def _git_environment(source: Mapping[str, str]) -> dict[str, str]:
+    environment = _secure_environment(source)
+    environment.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
+def _git(root: Path, *arguments: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            text=True,
+            capture_output=True,
+            env=_git_environment(os.environ),
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError(
+            "binding-invalid: Git is unavailable for root validation"
+        ) from error
+    if result.returncode:
+        raise AccessError("binding-invalid: select an existing Git worktree")
+    return result.stdout.strip()
+
+
+def _worktree_root(root: Path) -> Path:
+    candidate = root.expanduser().resolve(strict=False)
+    top_level = _git(candidate, "rev-parse", "--show-toplevel")
+    if not top_level:
+        raise AccessError("binding-invalid: select an existing Git worktree")
+    try:
+        return Path(top_level).resolve(strict=True)
+    except OSError as error:
+        raise AccessError(
+            "binding-invalid: Git reported an unavailable worktree"
+        ) from error
+
+
+def _origin(profile: Profile, root: Path) -> None:
+    fetch = _git(root, "remote", "get-url", "--all", "origin").splitlines()
+    push = _git(root, "remote", "get-url", "--push", "--all", "origin").splitlines()
+    if len(fetch) != 1 or len(push) != 1 or fetch[0] != push[0]:
+        raise AccessError(
+            "binding-invalid: origin must have one matching fetch and push URL"
+        )
+    try:
+        parse_repository(profile, fetch[0])
+    except AccessError as error:
+        raise AccessError(
+            "binding-invalid: origin must be an allowlisted HTTPS github.com repository"
+        ) from error
+
+
+def _atomic_json(path: Path, value: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=path.name + ".", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _source_files(directory: Path) -> list[Path]:
+    files = sorted(path for path in directory.glob("*.py") if path.is_file())
+    if not files or not any(path.name == "github_access.py" for path in files):
+        raise AccessError("binding-invalid: source directory lacks github_access.py")
+    return files
+
+
+def _runtime_version(directory: Path) -> str:
+    digest = hashlib.sha256()
+    for source in _source_files(directory):
+        digest.update(source.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _runtime_directory(state_root: Path, source_directory: Path) -> Path:
+    version = _runtime_version(source_directory)
+    base = state_root.expanduser().resolve(strict=False) / "github-access" / "runtime"
+    destination = base / version
+    if destination.exists():
+        if not destination.is_dir() or any(
+            destination.joinpath(source.name).read_bytes() != source.read_bytes()
+            for source in _source_files(source_directory)
+        ):
+            raise AccessError(
+                "binding-invalid: existing runtime payload does not match its version"
+            )
+        return destination
+    base.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix="runtime-", dir=base))
+    try:
+        for source in _source_files(source_directory):
+            shutil.copyfile(source, temporary / source.name)
+        try:
+            temporary.rename(destination)
+        except FileExistsError as error:
+            if not destination.is_dir() or any(
+                destination.joinpath(source.name).read_bytes() != source.read_bytes()
+                for source in _source_files(source_directory)
+            ):
+                raise AccessError(
+                    "binding-invalid: concurrent runtime payload differs"
+                ) from error
+        return destination
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+
+def _launcher_stub() -> bytes:
+    import ensurepip
+
+    machine = platform.machine().lower()
+    if machine in {"amd64", "x86_64", "x64"}:
+        name = "t64.exe"
+    elif machine in {"arm64", "aarch64"}:
+        name = "t64-arm.exe"
+    else:
+        raise AccessError(
+            "binding-invalid: unsupported Windows architecture for gh.exe"
+        )
+    wheels = sorted((Path(ensurepip.__file__).parent / "_bundled").glob("pip-*.whl"))
+    if not wheels:
+        raise AccessError("binding-invalid: this Python has no bundled launcher stub")
+    with zipfile.ZipFile(wheels[-1]) as wheel:
+        try:
+            return wheel.read(f"pip/_vendor/distlib/{name}")
+        except KeyError as error:
+            raise AccessError(
+                "binding-invalid: this Python lacks the required launcher stub"
+            ) from error
+
+
+def _windows_launcher(script: Path, binding: Path) -> bytes:
+    python = Path(sys.executable).resolve()
+    if not python.is_file():
+        raise AccessError(
+            "binding-invalid: the active Python executable is unavailable"
+        )
+    arguments = [str(script), "gh", "--binding", str(binding)]
+    main = "import runpy, sys\n"
+    main += f"sys.path.insert(0, {str(script.parent)!r})\n"
+    main += f"sys.argv = {arguments!r} + ['--'] + sys.argv[1:]\n"
+    main += f"runpy.run_path({str(script)!r}, run_name='__main__')\n"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as payload:
+        payload.writestr(zipfile.ZipInfo("__main__.py", (1980, 1, 1, 0, 0, 0)), main)
+    return _launcher_stub() + f'#!"{python}" -B\n'.encode() + archive.getvalue()
+
+
+def _posix_launcher(script: Path, binding: Path) -> bytes:
+    python = Path(sys.executable).resolve()
+    if not python.is_file():
+        raise AccessError(
+            "binding-invalid: the active Python executable is unavailable"
+        )
+    command = f"exec {shlex.quote(str(python))} -B {shlex.quote(str(script))}"
+    command += f' gh --binding {shlex.quote(str(binding))} -- "$@"\n'
+    return ("#!/bin/sh\n" + command).encode()
+
+
+def _launcher_directory(runtime: Path, binding: Path) -> Path:
+    key = hashlib.sha256(f"{binding}\0{runtime.name}".encode()).hexdigest()
+    return runtime.parent.parent / "bin" / key
+
+
+def _install_launcher(runtime: Path, binding: Path) -> Path:
+    launchers = _launcher_directory(runtime, binding)
+    launchers.mkdir(parents=True, mode=0o700, exist_ok=True)
+    script = runtime / "github_access.py"
+    if os.name == "nt":
+        launcher = launchers / "gh.exe"
+        expected = _windows_launcher(script, binding)
+    else:
+        launcher = launchers / "gh"
+        expected = _posix_launcher(script, binding)
+    if launcher.exists() and launcher.read_bytes() != expected:
+        raise AccessError("binding-invalid: existing launcher belongs to another root")
+    if not launcher.exists():
+        launcher.write_bytes(expected)
+        if os.name != "nt":
+            launcher.chmod(0o755)
+    return launchers
+
+
+@dataclass(frozen=True)
+class Binding:
+    path: Path
+    root: Path
+    profile: Profile
+    state_root: Path
+    runtime: Path
+    launchers: Path
+
+    @classmethod
+    def load(cls, path: Path) -> Binding:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise AccessError(
+                "binding-invalid: read the public GitHub access selection"
+            ) from error
+        fields = {
+            "schema_version",
+            "root",
+            "profile",
+            "state_root",
+            "runtime",
+            "launchers",
+        }
+        if (
+            not isinstance(data, dict)
+            or set(data) != fields
+            or data.get("schema_version") != 1
+        ):
+            raise AccessError("binding-invalid: invalid public GitHub access selection")
+        root_value, state_root_value, runtime_value, launchers_value = (
+            data.get("root"),
+            data.get("state_root"),
+            data.get("runtime"),
+            data.get("launchers"),
+        )
+        if any(
+            not isinstance(value, str) or not value
+            for value in (root_value, state_root_value, runtime_value, launchers_value)
+        ):
+            raise AccessError("binding-invalid: invalid public GitHub access paths")
+        assert isinstance(root_value, str)
+        assert isinstance(state_root_value, str)
+        assert isinstance(runtime_value, str)
+        assert isinstance(launchers_value, str)
+        try:
+            root, state_root, runtime, launchers = (
+                Path(value).resolve(strict=True)
+                for value in (
+                    root_value,
+                    state_root_value,
+                    runtime_value,
+                    launchers_value,
+                )
+            )
+        except OSError as error:
+            raise AccessError(
+                "binding-invalid: public GitHub access paths are unavailable"
+            ) from error
+        profile = Profile.from_data(data.get("profile"))
+        binding = cls(
+            path.resolve(strict=True), root, profile, state_root, runtime, launchers
+        )
+        expected_launchers = _launcher_directory(binding.runtime, binding.path)
+        if (
+            binding.path.parent != binding.root / ".agents"
+            or binding.launchers != expected_launchers
+        ):
+            raise AccessError(
+                "binding-invalid: selection paths do not match the exact root"
+            )
+        if binding.runtime.parent != binding.state_root / "github-access" / "runtime":
+            raise AccessError(
+                "binding-invalid: runtime is outside the selected state root"
+            )
+        if binding.runtime.name != _runtime_version(binding.runtime):
+            raise AccessError("binding-invalid: selected runtime is incomplete")
+        launcher = binding.launchers / ("gh.exe" if os.name == "nt" else "gh")
+        if not launcher.is_file():
+            raise AccessError("binding-invalid: selected launcher is unavailable")
+        return binding
+
+    def validate(self, cwd: Path) -> Profile:
+        if _worktree_root(cwd) != self.root:
+            raise AccessError(
+                "binding-invalid: GitHub employer access is bound to another worktree"
+            )
+        _origin(self.profile, self.root)
+        current = Binding.load(self.path)
+        if current != self:
+            raise AccessError(
+                "binding-invalid: GitHub employer access selection changed"
+            )
+        return self.profile
+
+    def environment(self, base: Mapping[str, str]) -> dict[str, str]:
+        python = Path(sys.executable).resolve()
+        script = self.runtime / "github_access.py"
+        helper = "!" + shlex.join(
+            [str(python), "-B", str(script), "credential", "--binding", str(self.path)]
+        )
+        environment = git_environment(_secure_environment(base), helper)
+        path = next(
+            (value for key, value in environment.items() if key.upper() == "PATH"), ""
+        )
+        environment = {
+            key: value for key, value in environment.items() if key.upper() != "PATH"
+        }
+        environment["PATH"] = str(self.launchers) + (os.pathsep + path if path else "")
+        if base.get("GCM_CREDENTIAL_STORE") in {"gpg", "secretservice"}:
+            environment["GCM_CREDENTIAL_STORE"] = base["GCM_CREDENTIAL_STORE"]
+        environment.update(
+            {
+                "GITHUB_ACCESS_BINDING": str(self.path),
+                "AGENT_STATE_DIRECTORY": str(self.state_root),
+            }
+        )
+        return environment
+
+    def check(self, root: Path, source_directory: Path) -> None:
+        if root.expanduser().resolve(strict=False) != self.root:
+            raise AccessError(
+                "binding-invalid: setup requires the exact Git worktree root"
+            )
+        self.validate(root)
+        expected = (
+            self.state_root
+            / "github-access"
+            / "runtime"
+            / _runtime_version(source_directory)
+        )
+        if self.runtime != expected:
+            raise AccessError("binding-invalid: selected runtime is stale; run setup")
+        script = self.runtime / "github_access.py"
+        expected_launcher = (
+            _windows_launcher(script, self.path)
+            if os.name == "nt"
+            else _posix_launcher(script, self.path)
+        )
+        launcher = self.launchers / ("gh.exe" if os.name == "nt" else "gh")
+        if launcher.read_bytes() != expected_launcher:
+            raise AccessError("binding-invalid: selected launcher is stale; run setup")
+
+
+def bind(
+    profile_path: Path, root: Path, state_root: Path, source_directory: Path
+) -> Binding:
+    profile = Profile.load(profile_path)
+    requested_root = root.expanduser().resolve(strict=False)
+    exact_root = _worktree_root(root)
+    if requested_root != exact_root:
+        raise AccessError("binding-invalid: setup requires the exact Git worktree root")
+    _origin(profile, exact_root)
+    selection = exact_root / ".agents" / "github-access.json"
+    if selection.exists():
+        existing = Binding.load(selection)
+        if (
+            existing.profile.organization.casefold() != profile.organization.casefold()
+            or existing.profile.login.casefold() != profile.login.casefold()
+        ):
+            raise AccessError(
+                "binding-exists: explicit retirement is required for another "
+                "employer account"
+            )
+    runtime = _runtime_directory(state_root, source_directory)
+    launchers = _install_launcher(runtime, selection)
+    _atomic_json(
+        selection,
+        {
+            "schema_version": 1,
+            "root": str(exact_root),
+            "profile": _public_profile(profile),
+            "state_root": str(state_root.expanduser().resolve(strict=False)),
+            "runtime": str(runtime),
+            "launchers": str(launchers),
+        },
+    )
+    return Binding.load(selection)

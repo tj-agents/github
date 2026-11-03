@@ -1,6 +1,6 @@
 ---
 name: access
-description: Onboard, rotate and check a single employer organization's fine-grained GitHub credential in secure OS storage. Use when configuring employer GitHub access or diagnosing its authentication.
+description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate its fine-grained credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
 kind: utility
 domain: github
 profile: core
