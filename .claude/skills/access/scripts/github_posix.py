@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shlex
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,7 +19,7 @@ def real_gh() -> Path:
     raise AccessError("gh-unavailable: install the official GitHub CLI")
 
 
-def real_git() -> Path:
+def real_git(environment: Mapping[str, str]) -> Path:
     for candidate in (Path("/usr/bin/git"), Path("/usr/local/bin/git")):
         if candidate.is_file():
             return candidate.resolve()
