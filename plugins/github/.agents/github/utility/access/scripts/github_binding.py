@@ -3,10 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shlex
 import shutil
 import subprocess
-import sys
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -14,7 +12,7 @@ from pathlib import Path
 
 from access_core import AccessError, Profile, private_environment
 from github_platform import PlatformProtocol
-from github_tools import git_environment, parse_https_repository
+from github_tools import parse_https_repository
 
 
 def _public_profile(profile: Profile) -> dict[str, object]:
@@ -304,28 +302,15 @@ class Binding:
             )
         return self.profile
 
-    def environment(self, base: Mapping[str, str]) -> dict[str, str]:
-        python = Path(sys.executable).resolve()
-        script = self.runtime / "github_access.py"
-        helper = "!" + shlex.join(
-            [str(python), "-B", str(script), "credential", "--binding", str(self.path)]
-        )
-        environment = git_environment(_secure_environment(base), helper)
-        path = next(
-            (value for key, value in environment.items() if key.upper() == "PATH"), ""
-        )
+    def activation_settings(self, base: Mapping[str, str]) -> dict[str, str]:
+        path = next((value for key, value in base.items() if key.upper() == "PATH"), "")
         environment = {
-            key: value for key, value in environment.items() if key.upper() != "PATH"
+            "PATH": str(self.launchers) + (os.pathsep + path if path else ""),
+            "GITHUB_ACCESS_BINDING": str(self.path),
+            "AGENT_STATE_DIRECTORY": str(self.state_root),
         }
-        environment["PATH"] = str(self.launchers) + (os.pathsep + path if path else "")
         if base.get("GCM_CREDENTIAL_STORE") in {"gpg", "secretservice"}:
             environment["GCM_CREDENTIAL_STORE"] = base["GCM_CREDENTIAL_STORE"]
-        environment.update(
-            {
-                "GITHUB_ACCESS_BINDING": str(self.path),
-                "AGENT_STATE_DIRECTORY": str(self.state_root),
-            }
-        )
         return environment
 
     def check(

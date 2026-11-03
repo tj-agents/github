@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -339,7 +342,7 @@ def test_gh_validator_does_not_treat_title_value_as_body(profile: Profile) -> No
 def test_gh_validator_treats_body_value_as_value_not_head(profile: Profile) -> None:
     invocation = validate_gh_command(
         profile,
-        ("pr", "create", "--title", "title", "--body", "--head"),
+        ("pr", "create", "--title", "title", "--body", "--head", "--head", "branch"),
         default_repository="employer/private-project",
     )
     assert invocation.arguments[-2:] == ("--repo", "employer/private-project")
@@ -454,7 +457,16 @@ def test_gh_runner_uses_caller_directory_for_relative_body_file(
         FakeState(),  # type: ignore[arg-type]
         FakeVault(),
         executable,
-        ("pr", "create", "--title", "title", "--body-file", "body.md"),
+        (
+            "pr",
+            "create",
+            "--title",
+            "title",
+            "--body-file",
+            "body.md",
+            "--head",
+            "branch",
+        ),
         cwd=tmp_path,
         default_repository="employer/private-project",
     )
@@ -474,6 +486,49 @@ def test_gh_runner_rejects_before_vault_read(profile: Profile, tmp_path: Path) -
             default_repository="employer/private-project",
         )
     assert vault.reads == []
+
+
+def test_gh_runner_rejects_missing_pr_head_before_vault_read(
+    profile: Profile, tmp_path: Path
+) -> None:
+    vault = FakeVault()
+    with pytest.raises(AccessError, match="pr create requires --head"):
+        run_gh(
+            profile,
+            FakeState(),  # type: ignore[arg-type]
+            vault,
+            Path(sys.executable),
+            ("pr", "create", "--title", "title", "--body", "body"),
+            cwd=tmp_path,
+            default_repository="employer/private-project",
+        )
+    assert vault.reads == []
+
+
+def test_gh_runner_honors_explicit_empty_environment(
+    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environment = kwargs.get("env")
+        assert isinstance(environment, dict)
+        captured.update(environment)
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setenv("AMBIENT_TEST", "ambient")
+    monkeypatch.setattr("github_tools.subprocess.run", fake_run)
+    run_gh(
+        profile,
+        FakeState(),  # type: ignore[arg-type]
+        FakeVault(),
+        Path(sys.executable),
+        ("pr", "list"),
+        cwd=tmp_path,
+        default_repository="employer/private-project",
+        environment={},
+    )
+    assert "AMBIENT_TEST" not in captured
 
 
 def test_git_credential_reader_checks_exact_protocol_host_path_and_login(
@@ -556,21 +611,67 @@ def test_git_command_validator_requires_declared_remote_or_exact_clone_url(
         )
 
 
-def test_git_environment_overrides_inherited_credentials_and_network_controls() -> None:
+def fake_git(tmp_path: Path, script: str) -> Path:
+    executable = tmp_path / ("fake-git.cmd" if os.name == "nt" else "fake-git")
+    if os.name == "nt":
+        payload = tmp_path / "fake-git.py"
+        payload.write_text(script, encoding="utf-8")
+        executable.write_text(
+            f'@"{sys.executable}" "{payload}" %*\r\n', encoding="utf-8"
+        )
+    else:
+        executable.write_text(f"#!{sys.executable}\n{script}", encoding="utf-8")
+        executable.chmod(0o700)
+    return executable
+
+
+def git_executable() -> Path:
+    executable = shutil.which("git")
+    assert executable is not None
+    return Path(executable).resolve()
+
+
+def git_worktree(tmp_path: Path) -> Path:
+    root = tmp_path / "repository"
+    subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+    return root
+
+
+def test_git_environment_overrides_inherited_credentials_and_network_controls(
+    tmp_path: Path,
+) -> None:
     environment = git_environment(
         {
             "PATH": "tools",
             "GIT_CONFIG_COUNT": "1",
             "GIT_CONFIG_KEY_0": "credential.helper",
             "GIT_CONFIG_VALUE_0": "store",
+            "GIT_EXEC_PATH": "evil",
             "HTTP_PROXY": "http://proxy",
             "GH_TOKEN": "old",
+            "GIT_SSL_NO_VERIFY": "1",
+            "GIT_HTTP_USER_AGENT": "agent",
+            "GIT_CURL_VERBOSE": "1",
+            "GIT_PROXY_COMMAND": "proxy",
+            "SSLKEYLOGFILE": "keys",
+            "CURL_SSL_BACKEND": "openssl",
         },
         "C:/agent/github-credential-helper.exe",
+        tmp_path,
     )
     assert "HTTP_PROXY" not in environment
     assert "GH_TOKEN" not in environment
+    assert "GIT_EXEC_PATH" not in environment
+    assert "GIT_SSL_NO_VERIFY" not in environment
+    assert "GIT_HTTP_USER_AGENT" not in environment
+    assert "GIT_CURL_VERBOSE" not in environment
+    assert "GIT_PROXY_COMMAND" not in environment
+    assert "SSLKEYLOGFILE" not in environment
+    assert "CURL_SSL_BACKEND" not in environment
     assert environment["GIT_CONFIG_COUNT"] == "10"
+    assert environment["HOME"] == str(tmp_path)
+    assert environment["NETRC"] == os.devnull
+    assert environment["GIT_ALLOW_PROTOCOL"] == "https"
     assert environment["GIT_CONFIG_VALUE_1"] == ""
     assert environment["GIT_CONFIG_VALUE_2"] == ""
     assert environment["GIT_CONFIG_VALUE_3"] == ""
@@ -582,23 +683,16 @@ def test_git_environment_overrides_inherited_credentials_and_network_controls() 
     assert environment["GIT_CONFIG_VALUE_9"] == "C:/agent/github-credential-helper.exe"
 
 
-def test_git_runner_uses_isolated_environment_without_vault(
+def test_git_runner_uses_credential_free_environment_for_local_commands(
     profile: Profile, tmp_path: Path
 ) -> None:
     script = (
-        "import os\nprint(os.environ['GIT_CONFIG_COUNT'])\n"
+        "import os\nprint(os.environ.get('GIT_CONFIG_COUNT', ''))\n"
+        "print(os.environ.get('GIT_CONFIG_KEY_9', ''))\n"
+        "print(os.environ.get('GIT_NO_LAZY_FETCH', ''))\n"
         "print(os.environ.get('HTTP_PROXY', ''))\n"
     )
-    executable = tmp_path / ("fake-git.cmd" if os.name == "nt" else "fake-git")
-    if os.name == "nt":
-        payload = tmp_path / "fake-git.py"
-        payload.write_text(script, encoding="utf-8")
-        executable.write_text(
-            f'@"{sys.executable}" "{payload}" %*\r\n', encoding="utf-8"
-        )
-    else:
-        executable.write_text(f"#!{sys.executable}\n{script}", encoding="utf-8")
-        executable.chmod(0o700)
+    executable = fake_git(tmp_path, script)
     result = run_git(
         profile,
         executable,
@@ -609,4 +703,229 @@ def test_git_runner_uses_isolated_environment_without_vault(
         environment={"PATH": os.environ["PATH"], "HTTP_PROXY": "http://proxy"},
     )
     assert result.returncode == 0
-    assert result.stdout.splitlines() == ["10", ""]
+    assert result.stdout.splitlines() == ["", "", "1", ""]
+
+
+def test_git_runner_rejects_unsafe_effective_config_before_network_launch(
+    profile: Profile, tmp_path: Path
+) -> None:
+    capture = tmp_path / "capture.jsonl"
+    script = (
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "record = {'arguments': sys.argv[1:], 'environment': {\n"
+        "    key: os.environ.get(key)\n"
+        "    for key in ('GIT_CONFIG_COUNT', 'GIT_CONFIG_VALUE_9')\n"
+        "}}\n"
+        "with Path(os.environ['CAPTURE']).open('a', encoding='utf-8') as stream:\n"
+        "    stream.write(json.dumps(record) + '\\n')\n"
+        "if sys.argv[1] == 'config':\n"
+        "    print('http.proxy\\0', end='')\n"
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        run_git(
+            profile,
+            fake_git(tmp_path, script),
+            ("fetch", "origin"),
+            remotes={"origin": "https://github.com/employer/private-project.git"},
+            helper_command="C:/agent/github-credential-helper.exe",
+            cwd=tmp_path,
+            environment={"PATH": os.environ["PATH"], "CAPTURE": str(capture)},
+        )
+    records = [
+        json.loads(line) for line in capture.read_text(encoding="utf-8").splitlines()
+    ]
+    assert records == [
+        {
+            "arguments": ["config", "--includes", "--null", "--name-only", "--list"],
+            "environment": {"GIT_CONFIG_COUNT": "0", "GIT_CONFIG_VALUE_9": None},
+        }
+    ]
+
+
+def test_git_runner_normalizes_network_commands_and_isolates_network_child(
+    profile: Profile, tmp_path: Path
+) -> None:
+    capture = tmp_path / "capture.jsonl"
+    original_home = tmp_path / "original-home"
+    script = (
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "keys = ('GIT_CONFIG_COUNT', 'GIT_CONFIG_VALUE_9', 'HOME', 'NETRC',\n"
+        "        'GCM_CREDENTIAL_STORE', 'GNUPGHOME', 'PASSWORD_STORE_DIR',\n"
+        "        'HTTP_PROXY', 'GIT_SSL_NO_VERIFY', 'GIT_TRACE', 'SSLKEYLOGFILE',\n"
+        "        'GIT_EXEC_PATH', 'GIT_ALLOW_PROTOCOL', 'APPDATA',\n"
+        "        'DBUS_SESSION_BUS_ADDRESS')\n"
+        "record = {'arguments': sys.argv[1:],\n"
+        "          'environment': {key: os.environ.get(key) for key in keys}}\n"
+        "record['home_clean'] = not any(\n"
+        "    (Path(os.environ['HOME']) / name).exists()\n"
+        "    for name in ('.netrc', '_netrc')\n"
+        ")\n"
+        "with Path(os.environ['CAPTURE']).open('a', encoding='utf-8') as stream:\n"
+        "    stream.write(json.dumps(record) + '\\n')\n"
+    )
+    result = run_git(
+        profile,
+        fake_git(tmp_path, script),
+        ("clone", "https://github.com/employer/private-project.git"),
+        remotes={},
+        helper_command="C:/agent/github-credential-helper.exe",
+        cwd=tmp_path,
+        environment={
+            "PATH": os.environ["PATH"],
+            "CAPTURE": str(capture),
+            "HOME": str(original_home),
+            "GCM_CREDENTIAL_STORE": "gpg",
+            "HTTP_PROXY": "http://proxy",
+            "GIT_SSL_NO_VERIFY": "1",
+            "GIT_TRACE": "1",
+            "SSLKEYLOGFILE": "keys",
+            "GIT_EXEC_PATH": "evil",
+            "APPDATA": "app-data",
+            "DBUS_SESSION_BUS_ADDRESS": "session-bus",
+        },
+    )
+    assert result.returncode == 0
+    records = [
+        json.loads(line) for line in capture.read_text(encoding="utf-8").splitlines()
+    ]
+    assert records[0]["arguments"] == [
+        "config",
+        "--includes",
+        "--null",
+        "--name-only",
+        "--list",
+    ]
+    assert records[1]["arguments"] == [
+        "clone",
+        "--template=",
+        "--no-recurse-submodules",
+        "https://github.com/employer/private-project.git",
+    ]
+    environment = records[1]["environment"]
+    assert environment["GIT_CONFIG_COUNT"] == "10"
+    assert environment["GIT_CONFIG_VALUE_9"] == "C:/agent/github-credential-helper.exe"
+    assert environment["HOME"] != str(original_home)
+    assert environment["NETRC"] == os.devnull
+    assert environment["GIT_ALLOW_PROTOCOL"] == "https"
+    assert environment["GCM_CREDENTIAL_STORE"] == "gpg"
+    assert environment["GNUPGHOME"] == str(original_home / ".gnupg")
+    assert environment["PASSWORD_STORE_DIR"] == str(original_home / ".password-store")
+    assert environment["APPDATA"] == "app-data"
+    assert environment["DBUS_SESSION_BUS_ADDRESS"] == "session-bus"
+    assert all(
+        environment[key] is None
+        for key in (
+            "HTTP_PROXY",
+            "GIT_SSL_NO_VERIFY",
+            "GIT_TRACE",
+            "SSLKEYLOGFILE",
+            "GIT_EXEC_PATH",
+        )
+    )
+    assert records[1]["home_clean"] is True
+
+
+@pytest.mark.parametrize("command", ["fetch", "pull", "push"])
+def test_git_runner_disables_submodule_recursion_for_network_commands(
+    profile: Profile, tmp_path: Path, command: str
+) -> None:
+    script = (
+        "import json, sys\n"
+        "if sys.argv[1] != 'config':\n"
+        "    print(json.dumps(sys.argv[1:]))\n"
+    )
+    result = run_git(
+        profile,
+        fake_git(tmp_path, script),
+        (command, "origin"),
+        remotes={"origin": "https://github.com/employer/private-project.git"},
+        helper_command="helper",
+        cwd=tmp_path,
+        environment={"PATH": os.environ["PATH"]},
+    )
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == [command, "--recurse-submodules=no", "origin"]
+
+
+@pytest.mark.parametrize("backend", ["gpg", "secretservice"])
+def test_git_environment_preserves_safe_public_credential_backends(
+    tmp_path: Path, backend: str
+) -> None:
+    environment = git_environment(
+        {"PATH": "tools", "GCM_CREDENTIAL_STORE": backend}, "helper", tmp_path
+    )
+    assert environment["GCM_CREDENTIAL_STORE"] == backend
+
+
+def test_git_runner_rejects_included_local_config_before_network_launch(
+    profile: Profile, tmp_path: Path
+) -> None:
+    root = git_worktree(tmp_path)
+    included = tmp_path / "included.config"
+    included.write_text("[credential]\n\thelper = store\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(root), "config", "include.path", str(included)], check=True
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        run_git(
+            profile,
+            git_executable(),
+            ("fetch", "origin"),
+            remotes={"origin": "https://github.com/employer/private-project.git"},
+            helper_command="helper",
+            cwd=root,
+            environment={"PATH": os.environ["PATH"]},
+        )
+
+
+def test_git_runner_rejects_worktree_config_before_network_launch(
+    profile: Profile, tmp_path: Path
+) -> None:
+    root = git_worktree(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "extensions.worktreeConfig", "true"],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "config",
+            "--worktree",
+            "remote.origin.proxy",
+            "proxy",
+        ],
+        check=True,
+    )
+    with pytest.raises(AccessError, match=r"^git-config-unsafe$"):
+        run_git(
+            profile,
+            git_executable(),
+            ("fetch", "origin"),
+            remotes={"origin": "https://github.com/employer/private-project.git"},
+            helper_command="helper",
+            cwd=root,
+            environment={"PATH": os.environ["PATH"]},
+        )
+
+
+def test_git_runner_allows_ordinary_local_config(
+    profile: Profile, tmp_path: Path
+) -> None:
+    root = git_worktree(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "core.autocrlf", "false"], check=True
+    )
+    result = run_git(
+        profile,
+        git_executable(),
+        ("status",),
+        remotes={},
+        helper_command="helper",
+        cwd=root,
+        environment={"PATH": os.environ["PATH"]},
+    )
+    assert result.returncode == 0

@@ -13,6 +13,18 @@ from access_core import AccessError, Profile, State, Vault, private_environment
 _NAME = re.compile(r"[A-Za-z0-9_.-]{1,100}")
 _SCALAR = re.compile(r"[^\x00\r\n]{1,4096}")
 _KEY_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}=[^\x00\r\n]{0,4096}")
+_UNSAFE_REMOTE_CONFIG_SUFFIXES = frozenset(
+    {
+        "proxy",
+        "proxyauthmethod",
+        "vcs",
+        "uploadpack",
+        "receivepack",
+        "serveroption",
+        "promisor",
+        "partialclonefilter",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,6 +450,8 @@ def _validate_noninteractive(group: str, command: str, options: OptionBindings) 
     body = options.has_value("--body") or options.has_value("--body-file")
     if group == "pr" and command == "create":
         fill = bool(options.switches & {"--fill", "--fill-first", "--fill-verbose"})
+        if not options.has_value("--head"):
+            raise _invalid("argument-invalid: pr create requires --head")
         if not options.has_value("--title") and not fill:
             raise _invalid("argument-invalid: pr create requires --title or --fill")
         if not body and not fill:
@@ -659,6 +673,7 @@ def run_gh(
     if not executable.is_absolute() or not executable.is_file():
         raise _invalid("launcher-invalid: pass the real absolute gh executable")
     token = _active_token(state, vault)
+    source = environment if environment is not None else os.environ
     with tempfile.TemporaryDirectory(prefix="github-access-gh-") as directory:
         try:
             result = subprocess.run(
@@ -667,7 +682,7 @@ def run_gh(
                 capture_output=True,
                 check=False,
                 cwd=cwd,
-                env=_child_environment(environment or os.environ, token, directory),
+                env=_child_environment(source, token, directory),
                 timeout=timeout,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
@@ -788,13 +803,21 @@ def validate_git_command(
     return GitInvocation(repository, tuple(arguments))
 
 
-def git_environment(source: Mapping[str, str], helper_command: str) -> dict[str, str]:
+def git_environment(
+    source: Mapping[str, str], helper_command: str, home: Path
+) -> dict[str, str]:
     if not _valid_scalar(helper_command):
         raise _invalid("helper-invalid: pass one exact credential helper command")
     environment = private_environment(source)
-    for key in tuple(environment):
-        if key.casefold().endswith("_proxy"):
-            environment.pop(key)
+    backend = source.get("GCM_CREDENTIAL_STORE")
+    if backend in {"gpg", "secretservice"}:
+        environment["GCM_CREDENTIAL_STORE"] = backend
+    if backend == "gpg":
+        original_home = Path(source.get("HOME") or Path.home()).expanduser()
+        environment.setdefault("GNUPGHOME", str(original_home / ".gnupg"))
+        environment.setdefault(
+            "PASSWORD_STORE_DIR", str(original_home / ".password-store")
+        )
     entries = (
         ("credential.helper", ""),
         ("credential.https://github.com.helper", ""),
@@ -814,11 +837,85 @@ def git_environment(source: Mapping[str, str], helper_command: str) -> dict[str,
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_SYSTEM": os.devnull,
             "GIT_CONFIG_COUNT": str(len(entries)),
+            "HOME": str(home),
+            "NETRC": os.devnull,
+            "GIT_ALLOW_PROTOCOL": "https",
         }
     )
     for index, (key, value) in enumerate(entries):
         environment[f"GIT_CONFIG_KEY_{index}"] = key
         environment[f"GIT_CONFIG_VALUE_{index}"] = value
+    return environment
+
+
+def _git_config_environment(source: Mapping[str, str]) -> dict[str, str]:
+    environment = private_environment(source)
+    environment.update(
+        {
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_COUNT": "0",
+        }
+    )
+    return environment
+
+
+def _unsafe_git_config_key(key: str) -> bool:
+    normalized = key.casefold()
+    if normalized.startswith(("http.", "credential.", "url.")):
+        return True
+    if normalized in {"core.gitproxy", "extensions.partialclone"}:
+        return True
+    parts = normalized.split(".")
+    return (
+        len(parts) > 2
+        and parts[0] == "remote"
+        and parts[-1] in _UNSAFE_REMOTE_CONFIG_SUFFIXES
+    )
+
+
+def _validate_git_config(
+    executable: Path, cwd: Path, source: Mapping[str, str], timeout: float
+) -> None:
+    try:
+        result = subprocess.run(
+            [
+                str(executable),
+                "config",
+                "--includes",
+                "--null",
+                "--name-only",
+                "--list",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            cwd=cwd,
+            env=_git_config_environment(source),
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AccessError("git-config-unsafe") from error
+    if result.returncode or any(
+        _unsafe_git_config_key(key) for key in result.stdout.split("\0") if key
+    ):
+        raise AccessError("git-config-unsafe")
+
+
+def _normalized_git_arguments(invocation: GitInvocation) -> tuple[str, ...]:
+    command, *rest = invocation.arguments
+    if command == "clone":
+        return (command, "--template=", "--no-recurse-submodules", *rest)
+    if command in {"fetch", "pull", "push"}:
+        return (command, "--recurse-submodules=no", *rest)
+    return invocation.arguments
+
+
+def _local_git_environment(source: Mapping[str, str]) -> dict[str, str]:
+    environment = private_environment(source)
+    environment["GIT_NO_LAZY_FETCH"] = "1"
     return environment
 
 
@@ -833,20 +930,38 @@ def run_git(
     environment: Mapping[str, str] | None = None,
     timeout: float = 60,
 ) -> subprocess.CompletedProcess[str]:
-    validate_git_command(profile, arguments, remotes=remotes)
-    if not executable.is_absolute() or not executable.is_file() or not cwd.is_dir():
+    invocation = validate_git_command(profile, arguments, remotes=remotes)
+    if (
+        not executable.is_absolute()
+        or not executable.is_file()
+        or not cwd.is_absolute()
+        or not cwd.is_dir()
+    ):
         raise _invalid(
             "launcher-invalid: pass an absolute git executable and working directory"
         )
+    source = environment if environment is not None else os.environ
     try:
-        return subprocess.run(
-            [str(executable), *arguments],
-            text=True,
-            capture_output=True,
-            check=False,
-            cwd=cwd,
-            env=git_environment(environment or os.environ, helper_command),
-            timeout=timeout,
-        )
+        if invocation.repository is None:
+            return subprocess.run(
+                [str(executable), *invocation.arguments],
+                text=True,
+                capture_output=True,
+                check=False,
+                cwd=cwd,
+                env=_local_git_environment(source),
+                timeout=timeout,
+            )
+        _validate_git_config(executable, cwd, source, timeout)
+        with tempfile.TemporaryDirectory(prefix="github-access-") as home:
+            return subprocess.run(
+                [str(executable), *_normalized_git_arguments(invocation)],
+                text=True,
+                capture_output=True,
+                check=False,
+                cwd=cwd,
+                env=git_environment(source, helper_command, Path(home)),
+                timeout=timeout,
+            )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise AccessError("tool-unavailable: git did not complete safely") from error
