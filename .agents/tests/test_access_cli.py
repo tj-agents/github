@@ -111,11 +111,53 @@ def test_cli_setup_check_uses_selected_source_without_credentials(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(github_mcp_install, "check", lambda *arguments: Path("mcp"))
+    checked: list[tuple[object, ...]] = []
+
+    def check(*arguments: object) -> Path:
+        checked.append(arguments)
+        return Path("mcp")
+
+    def forbidden_install(*arguments: object) -> Path:
+        pytest.fail("setup --check attempted to install GitHub MCP")
+
+    monkeypatch.setattr(github_mcp_install, "check", check)
+    monkeypatch.setattr(github_mcp_install, "install", forbidden_install)
     assert github_access.main(["setup", "--root", str(selected.root), "--check"]) == 0
+    assert checked == [
+        (selected.state_root, github_platform.current_platform().mcp_release())
+    ]
     result = json.loads(capsys.readouterr().out)
     assert result["binding"] == str(selected.path)
     assert result["native_hosts"] == "not-yet-configured"
+
+
+def test_cli_setup_installs_github_mcp(
+    selected: github_binding.Binding,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installed: list[tuple[object, ...]] = []
+
+    def install(*arguments: object) -> Path:
+        installed.append(arguments)
+        return Path("mcp")
+
+    monkeypatch.setenv("AGENT_STATE_DIRECTORY", str(selected.state_root))
+    monkeypatch.setattr(github_mcp_install, "install", install)
+    assert (
+        github_access.main(
+            [
+                "setup",
+                "--profile",
+                str(selected.root.parent / "profile.json"),
+                "--root",
+                str(selected.root),
+            ]
+        )
+        == 0
+    )
+    assert installed == [
+        (selected.state_root, github_platform.current_platform().mcp_release())
+    ]
 
 
 def test_installed_launcher_loads_real_cli_and_rechecks_scope(
@@ -257,6 +299,35 @@ def test_native_git_local_environment_has_no_credential_or_transport(
     assert environment["GIT_ALLOW_PROTOCOL"] == ""
     assert "GH_TOKEN" not in environment
     assert "GITHUB_TOKEN" not in environment
+
+
+def test_native_git_rejects_global_worktree_before_local_mutation(
+    selected: github_binding.Binding,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    home.mkdir()
+    outside.mkdir()
+    (home / ".gitconfig").write_text(
+        "[core]\n\tworktree = " + str(outside) + "\n", encoding="utf-8"
+    )
+    (selected.root / "tracked.txt").write_text("selected\n", encoding="utf-8")
+    (outside / "tracked.txt").write_text("outside\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(selected.root)
+
+    assert (
+        github_access.main(
+            ["native-git", "--binding", str(selected.path), "--", "add", "tracked.txt"]
+        )
+        == 1
+    )
+    assert "binding-invalid" in capsys.readouterr().err
+    assert not (selected.root / ".git" / "index").exists()
+    assert (outside / "tracked.txt").read_text(encoding="utf-8") == "outside\n"
 
 
 def test_native_git_replays_effective_config_for_network_commands(

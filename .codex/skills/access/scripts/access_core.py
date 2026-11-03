@@ -196,8 +196,15 @@ class Vault(Protocol):
 
 
 class GCMVault:
-    def __init__(self, profile: Profile, environment: Mapping[str, str]) -> None:
+    def __init__(
+        self, profile: Profile, environment: Mapping[str, str], git: Path
+    ) -> None:
         self.profile = profile
+        if not git.is_absolute() or not git.is_file():
+            raise AccessError(
+                "vault-unavailable: selected Git executable is unavailable"
+            )
+        git = git.resolve()
         self.environment = private_environment(environment)
         backend = (
             "wincredman"
@@ -216,8 +223,16 @@ class GCMVault:
         if not executable:
             raise AccessError("vault-unavailable: install Git Credential Manager")
         self.executable = executable
+        path = next(
+            (value for key, value in self.environment.items() if key.upper() == "PATH"),
+            "",
+        )
+        for key in tuple(self.environment):
+            if key.upper() == "PATH":
+                self.environment.pop(key)
         self.environment.update(
             {
+                "PATH": str(git.parent) + (os.pathsep + path if path else ""),
                 "GCM_CREDENTIAL_STORE": backend,
                 "GCM_NAMESPACE": "tj-agents-employer-" + profile.key,
                 "GCM_PROVIDER": "generic",

@@ -1,6 +1,8 @@
 import contextlib
 import http.client
 import json
+import os
+import shutil
 import threading
 import urllib.parse
 from collections.abc import Iterator
@@ -305,7 +307,26 @@ def test_gcm_never_accepts_plaintext_backend(
 ) -> None:
     monkeypatch.setattr("access_core.sys.platform", "linux")
     with pytest.raises(AccessError, match="vault-unavailable"):
-        GCMVault(profile, {"GCM_CREDENTIAL_STORE": "plaintext"})
+        GCMVault(
+            profile,
+            {"GCM_CREDENTIAL_STORE": "plaintext"},
+            Path(shutil.which("git") or ".").resolve(),
+        )
+
+
+def test_gcm_pins_selected_git_before_activated_launchers(
+    profile: Profile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    git = tmp_path / "Git" / "cmd" / "git.exe"
+    git.parent.mkdir(parents=True)
+    git.write_text("", encoding="utf-8")
+    monkeypatch.setattr("access_core.sys.platform", "win32")
+    monkeypatch.setattr("access_core.shutil.which", lambda *values, **keywords: "gcm")
+
+    vault = GCMVault(profile, {"Path": str(tmp_path / "launchers")}, git)
+
+    assert vault.environment["PATH"].split(os.pathsep)[0] == str(git.parent)
+    assert "Path" not in vault.environment
 
 
 @pytest.fixture
