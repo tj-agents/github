@@ -2,7 +2,7 @@ import io
 import json
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import access_core
@@ -45,7 +45,7 @@ class Platform:
     def real_gh(self) -> Path:
         return Path()
 
-    def real_git(self) -> Path:
+    def real_git(self, environment: Mapping[str, str]) -> Path:
         return Path()
 
     def launcher_path(
