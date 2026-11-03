@@ -160,7 +160,13 @@ def test_claude_native_write_timeout_recovers_without_duplicate_registration(
     ) -> None:
         calls.append(arguments)
         assert root == selected.root
-        assert arguments[:5] == ["add", "--transport", "stdio", "--scope", "local"]
+        name = arguments.index("employer_github")
+        assert arguments[name - 4 : name] == [
+            "--transport",
+            "stdio",
+            "--scope",
+            "local",
+        ]
         assert "GH_TOKEN=synthetic-secret" not in arguments
         profile.write_text(
             json.dumps(

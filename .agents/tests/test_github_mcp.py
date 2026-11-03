@@ -1,8 +1,9 @@
 import io
 import json
+import os
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import access_core
@@ -38,6 +39,7 @@ def binding() -> github_binding.Binding:
         root / "state",
         root / "runtime",
         root / "launchers",
+        github_platform.current_platform().real_git(os.environ),
     )
 
 
@@ -45,7 +47,7 @@ class Platform:
     def real_gh(self) -> Path:
         return Path()
 
-    def real_git(self) -> Path:
+    def real_git(self, environment: Mapping[str, str]) -> Path:
         return Path()
 
     def launcher_path(
@@ -371,6 +373,7 @@ def test_mcp_call_uses_current_credential_and_pinned_child(
         tmp_path,
         selected.runtime,
         selected.launchers,
+        selected.git,
     )
     state = access_core.State(tmp_path, selected.profile)
     version = "a" * 32
@@ -462,6 +465,7 @@ def test_mcp_child_failures_are_sanitized_and_reaped(
         tmp_path,
         selected.runtime,
         selected.launchers,
+        selected.git,
     )
     access_core.State(tmp_path, selected.profile).select("b" * 32)
     closed = False
@@ -514,6 +518,7 @@ def test_mcp_revalidates_before_reading_vault_or_spawning(
         tmp_path,
         selected.runtime,
         selected.launchers,
+        selected.git,
     )
 
     def denied(*values: object) -> access_core.Profile:
@@ -546,6 +551,7 @@ def test_mcp_reads_rotated_credential_for_each_call(
         tmp_path,
         selected.runtime,
         selected.launchers,
+        selected.git,
     )
     state = access_core.State(tmp_path, selected.profile)
     first, second = "c" * 32, "d" * 32
