@@ -238,9 +238,7 @@ def test_mcp_accepts_standard_request_metadata_without_expanding_tools(
         "code": -32602,
         "message": "tool call is invalid",
     }
-    assert calls == [
-        (4, "list_branches", {"owner": "employer", "repo": "private"})
-    ]
+    assert calls == [(4, "list_branches", {"owner": "employer", "repo": "private"})]
 
 
 def test_mcp_rejects_invalid_progress_metadata() -> None:
@@ -346,9 +344,7 @@ def test_mcp_rejects_null_metadata_without_dispatch_and_recovers(
         "message": "tool call request is invalid",
     }
     assert result[7]["id"] == 8
-    assert calls == [
-        (8, "list_branches", {"owner": "employer", "repo": "private"})
-    ]
+    assert calls == [(8, "list_branches", {"owner": "employer", "repo": "private"})]
 
 
 def test_mcp_bound_gateway_entry_lists_without_credential(tmp_path: Path) -> None:
