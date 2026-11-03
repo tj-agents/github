@@ -242,6 +242,10 @@ def test_gh_api_normalizes_relative_path_forces_get_and_rejects_scope_bypass(
             "--head",
             "other:branch",
         ),
+        ("pr", "create", "--title", "--body"),
+        ("issue", "create", "--body", "body"),
+        ("pr", "comment", "4", "--delete-last"),
+        ("issue", "comment", "4", "--delete-last"),
     ],
 )
 def test_gh_validator_rejects_editor_browser_and_mixed_owner_paths(
@@ -261,7 +265,7 @@ def test_gh_validator_rejects_editor_browser_and_mixed_owner_paths(
         ("pr", "reopen", "4"),
         ("pr", "review", "4", "--approve"),
         ("pr", "merge", "4", "--squash", "--match-head-commit", "a" * 40),
-        ("pr", "create", "--fill", "--head", "employer:branch"),
+        ("pr", "create", "--fill", "--head", "branch"),
         ("pr", "comment", "4", "--body-file", "C:/work/comment.md"),
     ],
 )
@@ -273,6 +277,110 @@ def test_gh_validator_allows_bounded_noninteractive_pr_workflows(
     )
 
 
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("pr", "create", "--title", "title", "--body", "body", "--head", "branch"),
+        ("pr", "review", "4", "--approve"),
+    ],
+)
+def test_gh_validator_allows_create_and_review_with_default_repository(
+    profile: Profile, arguments: tuple[str, ...]
+) -> None:
+    invocation = validate_gh_command(
+        profile, arguments, default_repository="employer/private-project"
+    )
+    assert invocation.arguments[-2:] == ("--repo", "employer/private-project")
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        (
+            "pr",
+            "create",
+            "--title",
+            "title",
+            "--body",
+            "body",
+            "--head",
+            "branch",
+            "--head=other",
+        ),
+        (
+            "pr",
+            "create",
+            "--title=title",
+            "--body=body",
+            "--head=branch",
+            "--head",
+            "other",
+        ),
+    ],
+)
+def test_gh_validator_rejects_repeated_singleton_options(
+    profile: Profile, arguments: tuple[str, ...]
+) -> None:
+    with pytest.raises(AccessError, match="repeated gh option"):
+        validate_gh_command(
+            profile, arguments, default_repository="employer/private-project"
+        )
+
+
+def test_gh_validator_does_not_treat_title_value_as_body(profile: Profile) -> None:
+    with pytest.raises(AccessError):
+        validate_gh_command(
+            profile,
+            ("pr", "create", "--title", "--body"),
+            default_repository="employer/private-project",
+        )
+
+
+def test_gh_validator_treats_body_value_as_value_not_head(profile: Profile) -> None:
+    invocation = validate_gh_command(
+        profile,
+        ("pr", "create", "--title", "title", "--body", "--head"),
+        default_repository="employer/private-project",
+    )
+    assert invocation.arguments[-2:] == ("--repo", "employer/private-project")
+
+
+def test_gh_validator_checks_effective_head_after_option_like_title(
+    profile: Profile,
+) -> None:
+    with pytest.raises(AccessError, match="--head must name a branch"):
+        validate_gh_command(
+            profile,
+            (
+                "pr",
+                "create",
+                "--title",
+                "--head",
+                "--body",
+                "body",
+                "--head",
+                "employer:branch",
+            ),
+            default_repository="employer/private-project",
+        )
+
+
+def test_gh_validator_emits_repository_view_target_as_positional(
+    profile: Profile,
+) -> None:
+    invocation = validate_gh_command(
+        profile,
+        ("repo", "view", "employer/private-project", "--json", "name"),
+    )
+    assert invocation.arguments == (
+        "repo",
+        "view",
+        "--json",
+        "name",
+        "employer/private-project",
+    )
+
+
 def test_gh_runner_validates_before_reading_and_isolates_child_environment(
     profile: Profile, tmp_path: Path
 ) -> None:
@@ -280,7 +388,8 @@ def test_gh_runner_validates_before_reading_and_isolates_child_environment(
         "import os, sys\nprint(os.environ['GH_TOKEN'])\nprint(os.environ['GH_HOST'])\n"
         "print(os.environ.get('HTTP_PROXY', ''))\n"
         "print(os.environ.get('GH_BROWSER', ''))\n"
-        "print(os.environ.get('PYTHONPATH', ''))\nprint(sys.argv[1:])\n"
+        "print(os.environ.get('PYTHONPATH', ''))\n"
+        "print(os.getcwd())\nprint(sys.argv[1:])\n"
     )
     executable = tmp_path / ("fake-gh.cmd" if os.name == "nt" else "fake-gh")
     if os.name == "nt":
@@ -300,6 +409,7 @@ def test_gh_runner_validates_before_reading_and_isolates_child_environment(
         vault,
         executable,
         ("pr", "list"),
+        cwd=tmp_path,
         default_repository="employer/private-project",
         environment={
             "PATH": os.environ["PATH"],
@@ -316,6 +426,39 @@ def test_gh_runner_validates_before_reading_and_isolates_child_environment(
     assert "http://proxy" not in result.stdout
     assert "browser" not in result.stdout
     assert "injected" not in result.stdout
+    assert str(tmp_path) in result.stdout
+
+
+def test_gh_runner_uses_caller_directory_for_relative_body_file(
+    profile: Profile, tmp_path: Path
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    script = (
+        "from pathlib import Path\nimport sys\n"
+        "print(Path(sys.argv[sys.argv.index('--body-file') + 1]).read_text())\n"
+        "print(Path.cwd())\n"
+    )
+    executable = tmp_path / ("fake-gh.cmd" if os.name == "nt" else "fake-gh")
+    if os.name == "nt":
+        payload = tmp_path / "fake-gh.py"
+        payload.write_text(script, encoding="utf-8")
+        executable.write_text(
+            f'@"{sys.executable}" "{payload}" %*\r\n', encoding="utf-8"
+        )
+    else:
+        executable.write_text(f"#!{sys.executable}\n{script}", encoding="utf-8")
+        executable.chmod(0o700)
+    result = run_gh(
+        profile,
+        FakeState(),  # type: ignore[arg-type]
+        FakeVault(),
+        executable,
+        ("pr", "create", "--title", "title", "--body-file", "body.md"),
+        cwd=tmp_path,
+        default_repository="employer/private-project",
+    )
+    assert result.stdout.splitlines() == ["body", str(tmp_path)]
 
 
 def test_gh_runner_rejects_before_vault_read(profile: Profile, tmp_path: Path) -> None:
@@ -327,6 +470,7 @@ def test_gh_runner_rejects_before_vault_read(profile: Profile, tmp_path: Path) -
             vault,
             Path(sys.executable),
             ("auth", "status"),
+            cwd=tmp_path,
             default_repository="employer/private-project",
         )
     assert vault.reads == []
