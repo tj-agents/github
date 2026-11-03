@@ -1,8 +1,21 @@
+from __future__ import annotations
+
 import shlex
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from access_core import AccessError
+
+if TYPE_CHECKING:
+    from github_platform import Launcher
+
+
+def real_git() -> Path:
+    for candidate in (Path("/usr/bin/git"), Path("/usr/local/bin/git")):
+        if candidate.is_file():
+            return candidate.resolve()
+    raise AccessError("git-unavailable: install Git")
 
 
 def real_gh() -> Path:
@@ -12,18 +25,18 @@ def real_gh() -> Path:
     raise AccessError("gh-unavailable: install the official GitHub CLI")
 
 
-def launcher_path(launchers: Path) -> Path:
-    return launchers / "gh"
+def launcher_path(launchers: Path, launcher: Launcher) -> Path:
+    return launchers / launcher.filename
 
 
-def launcher_contents(script: Path, binding: Path) -> bytes:
+def launcher_contents(script: Path, binding: Path, launcher: Launcher) -> bytes:
     python = Path(sys.executable).resolve()
     if not python.is_file():
         raise AccessError(
             "binding-invalid: the active Python executable is unavailable"
         )
     command = f"exec {shlex.quote(str(python))} -B {shlex.quote(str(script))}"
-    command += f' gh --binding {shlex.quote(str(binding))} -- "$@"\n'
+    command += f' {launcher.operation} --binding {shlex.quote(str(binding))} -- "$@"\n'
     return ("#!/bin/sh\n" + command).encode()
 
 
