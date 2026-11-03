@@ -370,7 +370,7 @@ def _upstream_call(
     version = state.active()
     if version is None:
         raise MCPError(-32000, "employer credential is unavailable")
-    token = access_core.GCMVault(profile, os.environ).read(version)
+    token = access_core.GCMVault(profile, os.environ, binding.git).read(version)
     binary = github_mcp_install.check(binding.state_root, platform.mcp_release())
     try:
         process = subprocess.Popen(

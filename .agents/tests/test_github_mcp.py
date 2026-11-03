@@ -585,6 +585,7 @@ def test_mcp_call_uses_current_credential_and_pinned_child(
     state.select(version)
     token = "github_pat_" + "x" * 40
     captured: dict[str, object] = {}
+    vaults: list[tuple[object, ...]] = []
 
     class Vault:
         def read(self, requested: str) -> str:
@@ -624,8 +625,12 @@ def test_mcp_call_uses_current_credential_and_pinned_child(
         captured["environment"] = keywords["env"]
         return Child()
 
+    def vault(*values: object) -> Vault:
+        vaults.append(values)
+        return Vault()
+
     monkeypatch.setattr(github_binding.Binding, "validate", validate)
-    monkeypatch.setattr(access_core, "GCMVault", lambda *values: Vault())
+    monkeypatch.setattr(access_core, "GCMVault", vault)
     monkeypatch.setattr(github_mcp_install, "check", lambda *values: Path("server"))
     monkeypatch.setattr(subprocess, "Popen", start)
     response = github_mcp_stdio._upstream_call(
@@ -647,6 +652,7 @@ def test_mcp_call_uses_current_credential_and_pinned_child(
     assert environment["GITHUB_PERSONAL_ACCESS_TOKEN"] == token
     assert "GH_TOKEN" not in environment
     assert json.dumps(response).count(token) == 0
+    assert vaults == [(selected.profile, os.environ, selected.git)]
 
 
 @pytest.mark.parametrize(
