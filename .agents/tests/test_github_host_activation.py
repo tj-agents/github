@@ -236,7 +236,12 @@ def test_claude_ownership_change_after_receipt_preserves_registration(
     previous = github_host_activation._registration(
         github_hosts.mcp_command(selected, {"PATH": "previous-tools"})
     )
-    unrelated = {"type": "stdio", "command": "unrelated", "args": [], "env": {}}
+    unrelated: dict[str, object] = {
+        "type": "stdio",
+        "command": "unrelated",
+        "args": [],
+        "env": {},
+    }
 
     def write_registration(value: dict[str, object]) -> None:
         profile.write_text(
