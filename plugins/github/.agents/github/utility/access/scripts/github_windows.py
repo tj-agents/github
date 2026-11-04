@@ -76,6 +76,11 @@ def real_git(environment: Mapping[str, str]) -> Path:
         root = Path(local_app_data) / "Programs" / "Git"
         candidates.extend((root / "cmd/git.exe", root / "bin/git.exe"))
     for candidate in candidates:
+        if (
+            candidate.parent.name.casefold() == "git-core"
+            and candidate.parent.parent.name.casefold() == "libexec"
+        ):
+            continue
         if candidate.is_file() and not _is_generated_launcher(candidate, launchers):
             return candidate.resolve()
     raise AccessError("git-unavailable: install Git for Windows")
