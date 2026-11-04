@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import github_tools
@@ -79,6 +79,23 @@ def test_parse_repository_accepts_exact_allowlisted_employer_repository(
     profile: Profile, value: str
 ) -> None:
     assert parse_repository(profile, value) == Repository("employer", "private-project")
+
+
+def test_organization_wide_access_accepts_new_repositories_and_denies_other_owners(
+    profile: Profile,
+) -> None:
+    selected = replace(profile, repositories=("*",))
+    assert parse_repository(selected, "employer/new-project") == Repository(
+        "employer", "new-project"
+    )
+    assert (
+        validate_gh_command(
+            selected, ("pr", "list", "--repo", "employer/new-project")
+        ).repository.name
+        == "new-project"
+    )
+    with pytest.raises(AccessError, match="repository-denied"):
+        parse_repository(selected, "other/new-project")
 
 
 @pytest.mark.parametrize(

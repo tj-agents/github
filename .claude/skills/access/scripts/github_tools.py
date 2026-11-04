@@ -100,13 +100,14 @@ def _invalid(
 
 
 def _repository(profile: Profile, organization: str, name: str) -> Repository:
-    if (
-        organization.casefold() != profile.organization.casefold()
-        or name.casefold() not in {item.casefold() for item in profile.repositories}
-    ):
+    if not profile.allows_repository(organization, name):
         raise _invalid("repository-denied: select an allowlisted employer repository")
-    selected = next(
-        item for item in profile.repositories if item.casefold() == name.casefold()
+    selected = (
+        name
+        if profile.repositories == ("*",)
+        else next(
+            item for item in profile.repositories if item.casefold() == name.casefold()
+        )
     )
     return Repository(profile.organization, selected)
 
