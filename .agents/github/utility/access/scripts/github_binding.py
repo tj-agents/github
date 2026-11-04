@@ -243,6 +243,13 @@ class Binding:
 
     @classmethod
     def load(cls, path: Path, platform: PlatformProtocol) -> Binding:
+        binding = cls._read(path, platform)
+        if binding.git != platform.real_git(os.environ):
+            raise AccessError("binding-invalid: selected Git executable changed")
+        return binding
+
+    @classmethod
+    def _read(cls, path: Path, platform: PlatformProtocol) -> Binding:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
@@ -326,8 +333,6 @@ class Binding:
             )
         if binding.runtime.name != _runtime_version(binding.runtime):
             raise AccessError("binding-invalid: selected runtime is incomplete")
-        if binding.git != platform.real_git(os.environ):
-            raise AccessError("binding-invalid: selected Git executable changed")
         for identity in Launcher:
             launcher = platform.launcher_path(binding.launchers, identity)
             if not launcher.is_file():
@@ -413,7 +418,7 @@ def bind(
     _origin(profile, git, exact_root)
     selection = exact_root / ".agents" / "github-access.json"
     if selection.exists():
-        existing = Binding.load(selection, platform)
+        existing = Binding._read(selection, platform)
         if (
             existing.profile.organization.casefold() != profile.organization.casefold()
             or existing.profile.login.casefold() != profile.login.casefold()

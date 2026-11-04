@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -322,6 +323,38 @@ def test_binding_load_rejects_tampered_public_paths(
     binding.path.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(AccessError, match="binding-invalid"):
         Binding.load(binding.path, platform)
+
+
+@pytest.mark.parametrize("another_account", [False, True])
+def test_setup_reselects_git_while_preserving_the_existing_account(
+    tmp_path: Path,
+    profile_path: Path,
+    source_directory: Path,
+    declaration: dict[str, Any],
+    platform: PlatformProtocol,
+    another_account: bool,
+) -> None:
+    root = worktree(tmp_path)
+    binding = bind(profile_path, root, state_root(tmp_path), source_directory, platform)
+    previous_git = tmp_path / binding.git.name
+    shutil.copyfile(binding.git, previous_git)
+    document = json.loads(binding.path.read_text(encoding="utf-8"))
+    document["git"] = str(previous_git)
+    binding.path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(AccessError, match="selected Git executable changed"):
+        Binding.load(binding.path, platform)
+    if another_account:
+        declaration["login"] = "another-developer"
+        profile_path.write_text(json.dumps(declaration), encoding="utf-8")
+        with pytest.raises(AccessError, match="binding-exists"):
+            bind(profile_path, root, state_root(tmp_path), source_directory, platform)
+        assert json.loads(binding.path.read_text(encoding="utf-8")) == document
+    else:
+        updated = bind(
+            profile_path, root, state_root(tmp_path), source_directory, platform
+        )
+        assert updated.git == platform.real_git(os.environ)
+        assert updated.validate(root, platform) == binding.profile
 
 
 def test_check_requires_exact_root_and_current_runtime(
