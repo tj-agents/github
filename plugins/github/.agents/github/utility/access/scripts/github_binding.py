@@ -25,6 +25,7 @@ def _public_profile(profile: Profile) -> dict[str, object]:
         "repositories": list(profile.repositories),
         "permissions": dict(profile.permissions),
         "expires_in": profile.expires_in,
+        "token_kind": profile.token_kind,
     }
 
 

@@ -97,7 +97,8 @@ def test_bind_writes_exact_public_selection_and_immutable_runtime(
     assert stored["state_root"] == str(state_root(tmp_path).resolve())
     assert stored["git"] == str(platform.real_git(os.environ))
     assert stored["profile"]["organization"] == "employer"
-    assert "token" not in binding.path.read_text(encoding="utf-8").casefold()
+    assert {"token", "password", "credential"}.isdisjoint(stored["profile"])
+    assert stored["profile"]["token_kind"] == "fine-grained"
     assert (
         (binding.runtime / "github_access.py")
         .read_text(encoding="utf-8")

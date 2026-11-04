@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,20 @@ import github_mcp_release
 import github_mcp_stdio
 import github_platform
 import pytest
+
+
+def test_mcp_organization_wide_access_preserves_owner_and_repository_validation() -> (
+    None
+):
+    selected = replace(profile(), repositories=("*",))
+    github_mcp_stdio._allowed_repository(
+        selected, {"owner": "employer", "repo": "new-project"}
+    )
+    for owner, repository in [("other", "new-project"), ("employer", "../other")]:
+        with pytest.raises(github_mcp_stdio.MCPError):
+            github_mcp_stdio._allowed_repository(
+                selected, {"owner": owner, "repo": repository}
+            )
 
 
 def profile() -> access_core.Profile:

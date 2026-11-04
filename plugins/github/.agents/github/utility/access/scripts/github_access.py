@@ -16,6 +16,7 @@ import github_mcp_stdio
 import github_native_git
 import github_platform
 import github_tools
+from github_tokens import TokenKind
 
 
 def state_root() -> Path:
@@ -194,6 +195,12 @@ def parser() -> argparse.ArgumentParser:
         command = operations.add_parser(operation)
         command.add_argument("--profile", type=Path)
         command.add_argument("--binding", type=Path)
+        if operation != "check":
+            command.add_argument(
+                "--token-kind",
+                type=TokenKind.parse,
+                choices=tuple(TokenKind),
+            )
     setup = operations.add_parser("setup")
     setup.add_argument("--profile", type=Path)
     setup.add_argument("--root", type=Path, default=Path.cwd())
@@ -358,7 +365,7 @@ def dispatch(
             github_mcp_install.check(binding.state_root, platform.mcp_release())
     else:
         vault.check()
-        token = access_core.receive_token(profile)
+        token = access_core.receive_token(profile, token_kind=arguments.token_kind)
         if binding is not None:
             profile = binding.validate(Path.cwd(), platform)
         evidence = access_core.rotate(
