@@ -576,7 +576,7 @@ def test_gh_git_child_launcher_removes_tokens_from_actual_git_helper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = git_worktree(tmp_path)
-    git = git_executable()
+    git = platform.real_git(os.environ)
     for arguments in (
         ("config", "user.name", "Synthetic User"),
         ("config", "user.email", "synthetic@example.invalid"),
@@ -1526,3 +1526,24 @@ def test_windows_git_selection_survives_git_shell_child(tmp_path: Path) -> None:
         check=True,
     )
     assert Path(result.stdout.strip()) == selected
+
+
+@pytest.mark.parametrize(
+    "directory",
+    ["bin", "mingw64/bin", "ucrt64/bin", "ucrt64/libexec/git-core"],
+)
+def test_windows_git_resolver_selects_installation_public_command(
+    tmp_path: Path, directory: str
+) -> None:
+    root = tmp_path / "git"
+    command = root / "cmd" / "git.exe"
+    command.parent.mkdir(parents=True)
+    command.write_bytes(b"command")
+    candidate = root / directory / "git.exe"
+    candidate.parent.mkdir(parents=True)
+    candidate.write_bytes(b"internal")
+    other = tmp_path / "other-git" / "cmd" / "git.exe"
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"other")
+    environment = {"PATH": os.pathsep.join((str(candidate.parent), str(other.parent)))}
+    assert github_windows.real_git(environment) == command.resolve()
