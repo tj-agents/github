@@ -58,6 +58,22 @@ def _is_generated_launcher(candidate: Path, launchers: Sequence[Path]) -> bool:
     return False
 
 
+def _git_command(candidate: Path) -> Path | None:
+    directory = candidate.parent
+    if (
+        directory.name.casefold() == "git-core"
+        and directory.parent.name.casefold() == "libexec"
+    ):
+        command = directory.parent.parent.parent / "cmd" / "git.exe"
+        return command.resolve() if command.is_file() else None
+    if directory.name.casefold() == "bin":
+        for root in (directory.parent, directory.parent.parent):
+            command = root / "cmd" / "git.exe"
+            if command.is_file():
+                return command.resolve()
+    return candidate.resolve()
+
+
 def real_git(environment: Mapping[str, str]) -> Path:
     launchers = _generated_launchers(environment)
     candidates = [
@@ -76,13 +92,10 @@ def real_git(environment: Mapping[str, str]) -> Path:
         root = Path(local_app_data) / "Programs" / "Git"
         candidates.extend((root / "cmd/git.exe", root / "bin/git.exe"))
     for candidate in candidates:
-        if (
-            candidate.parent.name.casefold() == "git-core"
-            and candidate.parent.parent.name.casefold() == "libexec"
-        ):
-            continue
         if candidate.is_file() and not _is_generated_launcher(candidate, launchers):
-            return candidate.resolve()
+            command = _git_command(candidate)
+            if command is not None:
+                return command
     raise AccessError("git-unavailable: install Git for Windows")
 
 
