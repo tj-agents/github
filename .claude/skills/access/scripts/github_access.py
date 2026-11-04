@@ -1,8 +1,6 @@
 import argparse
 import json
 import os
-import shlex
-import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -10,6 +8,7 @@ from pathlib import Path
 
 import access_core
 import github_binding
+import github_native_git
 import github_platform
 import github_tools
 
@@ -20,7 +19,7 @@ def state_root() -> Path:
     )
 
 
-def git_read(root: Path, arguments: Sequence[str]) -> str:
+def git_read(executable: Path, root: Path, arguments: Sequence[str]) -> str:
     environment = access_core.private_environment(os.environ)
     environment.update(
         GIT_CONFIG_GLOBAL=os.devnull,
@@ -31,7 +30,7 @@ def git_read(root: Path, arguments: Sequence[str]) -> str:
     )
     try:
         result = subprocess.run(
-            ["git", *arguments],
+            [str(executable), *arguments],
             cwd=root,
             env=environment,
             text=True,
@@ -50,32 +49,8 @@ def git_read(root: Path, arguments: Sequence[str]) -> str:
     return result.stdout.strip()
 
 
-def remotes(root: Path) -> dict[str, str]:
-    result = {}
-    for name in git_read(root, ["remote"]).splitlines():
-        urls = git_read(root, ["remote", "get-url", "--all", name]).splitlines()
-        push_urls = git_read(
-            root, ["remote", "get-url", "--push", "--all", name]
-        ).splitlines()
-        if len(urls) != 1 or push_urls != urls:
-            raise access_core.AccessError(
-                "git-scope-invalid: each remote needs one matching fetch/push URL"
-            )
-        result[name] = urls[0]
-    return result
-
-
 def helper_command(binding: github_binding.Binding) -> str:
-    return "!" + shlex.join(
-        [
-            sys.executable,
-            "-B",
-            str(Path(__file__).resolve()),
-            "credential",
-            "--binding",
-            str(binding.path),
-        ]
-    )
+    return github_native_git.helper_command(binding)
 
 
 def run_git(
@@ -83,14 +58,11 @@ def run_git(
     profile: access_core.Profile,
     arguments: Sequence[str],
 ) -> int:
-    executable = shutil.which("git")
-    if executable is None:
-        raise access_core.AccessError("git-unavailable: install Git")
     result = github_tools.run_git(
         profile,
-        Path(executable).resolve(),
+        binding.git,
         arguments,
-        remotes=remotes(Path.cwd()),
+        remotes=github_native_git.remotes(binding.git, Path.cwd()),
         helper_command=helper_command(binding),
         cwd=Path.cwd(),
     )
@@ -144,7 +116,7 @@ def parser() -> argparse.ArgumentParser:
     setup.add_argument("--profile", type=Path)
     setup.add_argument("--root", type=Path, default=Path.cwd())
     setup.add_argument("--check", action="store_true")
-    for operation in ("gh", "git", "credential"):
+    for operation in ("gh", "git", "credential", "native-git"):
         command = operations.add_parser(operation)
         command.add_argument("--binding", type=Path)
         command.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -196,11 +168,19 @@ def dispatch(
             )
         )
         return 0
+    if arguments.operation == "native-git":
+        if arguments.binding is None:
+            raise access_core.AccessError("binding-required: select the exact binding")
+        binding = github_binding.Binding.load(arguments.binding, platform)
+        command = arguments.arguments
+        if command[:1] == ["--"]:
+            command = command[1:]
+        return github_native_git.run(binding, command, platform)
     if arguments.operation in {"gh", "git", "credential"}:
         binding = selected_binding(arguments.binding, platform)
         profile = binding.validate(Path.cwd(), platform)
         state = access_core.State(binding.state_root, profile)
-        vault = access_core.GCMVault(profile, os.environ)
+        vault = access_core.GCMVault(profile, os.environ, binding.git)
         command = arguments.arguments
         if command[:1] == ["--"]:
             command = command[1:]
@@ -224,7 +204,9 @@ def dispatch(
             command,
             platform=platform,
             cwd=Path.cwd(),
-            default_repository=git_read(Path.cwd(), ["remote", "get-url", "origin"]),
+            default_repository=git_read(
+                binding.git, Path.cwd(), ["remote", "get-url", "origin"]
+            ),
         )
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
@@ -247,7 +229,11 @@ def dispatch(
     state = access_core.State(
         binding.state_root if binding is not None else state_root(), profile
     )
-    vault = access_core.GCMVault(profile, os.environ)
+    vault = access_core.GCMVault(
+        profile,
+        os.environ,
+        binding.git if binding is not None else platform.real_git(os.environ),
+    )
     if arguments.operation == "check":
         version = state.active()
         if version is None:

@@ -73,13 +73,20 @@ def _git_environment(source: Mapping[str, str]) -> dict[str, str]:
     return environment
 
 
-def _git(root: Path, *arguments: str) -> str:
+def _git(
+    executable: Path,
+    root: Path,
+    *arguments: str,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    if not executable.is_absolute() or not executable.is_file():
+        raise AccessError("binding-invalid: the selected Git executable is unavailable")
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), *arguments],
+            [str(executable), "-C", str(root), *arguments],
             text=True,
             capture_output=True,
-            env=_git_environment(os.environ),
+            env=_git_environment(os.environ) if environment is None else environment,
             timeout=10,
             check=False,
         )
@@ -89,12 +96,20 @@ def _git(root: Path, *arguments: str) -> str:
         ) from error
     if result.returncode:
         raise AccessError("binding-invalid: select an existing Git worktree")
-    return result.stdout.strip()
+    return result.stdout.removesuffix("\n")
 
 
-def _worktree_root(root: Path) -> Path:
+def _worktree_root(
+    executable: Path, root: Path, environment: Mapping[str, str] | None = None
+) -> Path:
     candidate = root.expanduser().resolve(strict=False)
-    top_level = _git(candidate, "rev-parse", "--show-toplevel")
+    top_level = _git(
+        executable,
+        candidate,
+        "rev-parse",
+        "--show-toplevel",
+        environment=environment,
+    )
     if not top_level:
         raise AccessError("binding-invalid: select an existing Git worktree")
     try:
@@ -105,9 +120,11 @@ def _worktree_root(root: Path) -> Path:
         ) from error
 
 
-def _origin(profile: Profile, root: Path) -> None:
-    fetch = _git(root, "remote", "get-url", "--all", "origin").splitlines()
-    push = _git(root, "remote", "get-url", "--push", "--all", "origin").splitlines()
+def _origin(profile: Profile, executable: Path, root: Path) -> None:
+    fetch = _git(executable, root, "remote", "get-url", "--all", "origin").splitlines()
+    push = _git(
+        executable, root, "remote", "get-url", "--push", "--all", "origin"
+    ).splitlines()
     if len(fetch) != 1 or len(push) != 1 or fetch[0] != push[0]:
         raise AccessError(
             "binding-invalid: origin must have one matching fetch and push URL"
@@ -197,12 +214,15 @@ def _install_launcher(runtime: Path, binding: Path, platform: PlatformProtocol) 
     launchers = _launcher_directory(runtime, binding)
     launchers.mkdir(parents=True, mode=0o700, exist_ok=True)
     script = runtime / "github_access.py"
-    launcher = platform.launcher_path(launchers, Launcher.GH)
-    expected = platform.launcher_contents(script, binding, Launcher.GH)
-    if launcher.exists() and launcher.read_bytes() != expected:
-        raise AccessError("binding-invalid: existing launcher belongs to another root")
-    if not launcher.exists():
-        platform.write_launcher(launcher, expected)
+    for identity in Launcher:
+        launcher = platform.launcher_path(launchers, identity)
+        expected = platform.launcher_contents(script, binding, identity)
+        if launcher.exists() and launcher.read_bytes() != expected:
+            raise AccessError(
+                "binding-invalid: existing launcher belongs to another root"
+            )
+        if not launcher.exists():
+            platform.write_launcher(launcher, expected)
     return launchers
 
 
@@ -214,6 +234,7 @@ class Binding:
     state_root: Path
     runtime: Path
     launchers: Path
+    git: Path
 
     @classmethod
     def load(cls, path: Path, platform: PlatformProtocol) -> Binding:
@@ -230,6 +251,7 @@ class Binding:
             "state_root",
             "runtime",
             "launchers",
+            "git",
         }
         if (
             not isinstance(data, dict)
@@ -237,29 +259,38 @@ class Binding:
             or data.get("schema_version") != 1
         ):
             raise AccessError("binding-invalid: invalid public GitHub access selection")
-        root_value, state_root_value, runtime_value, launchers_value = (
+        root_value, state_root_value, runtime_value, launchers_value, git_value = (
             data.get("root"),
             data.get("state_root"),
             data.get("runtime"),
             data.get("launchers"),
+            data.get("git"),
         )
         if any(
             not isinstance(value, str) or not value
-            for value in (root_value, state_root_value, runtime_value, launchers_value)
+            for value in (
+                root_value,
+                state_root_value,
+                runtime_value,
+                launchers_value,
+                git_value,
+            )
         ):
             raise AccessError("binding-invalid: invalid public GitHub access paths")
         assert isinstance(root_value, str)
         assert isinstance(state_root_value, str)
         assert isinstance(runtime_value, str)
         assert isinstance(launchers_value, str)
+        assert isinstance(git_value, str)
         try:
-            root, state_root, runtime, launchers = (
+            root, state_root, runtime, launchers, git = (
                 Path(value).resolve(strict=True)
                 for value in (
                     root_value,
                     state_root_value,
                     runtime_value,
                     launchers_value,
+                    git_value,
                 )
             )
         except OSError as error:
@@ -268,7 +299,13 @@ class Binding:
             ) from error
         profile = Profile.from_data(data.get("profile"))
         binding = cls(
-            path.resolve(strict=True), root, profile, state_root, runtime, launchers
+            path.resolve(strict=True),
+            root,
+            profile,
+            state_root,
+            runtime,
+            launchers,
+            git,
         )
         expected_launchers = _launcher_directory(binding.runtime, binding.path)
         if (
@@ -284,23 +321,39 @@ class Binding:
             )
         if binding.runtime.name != _runtime_version(binding.runtime):
             raise AccessError("binding-invalid: selected runtime is incomplete")
-        launcher = platform.launcher_path(binding.launchers, Launcher.GH)
-        if not launcher.is_file():
-            raise AccessError("binding-invalid: selected launcher is unavailable")
+        if binding.git != platform.real_git(os.environ):
+            raise AccessError("binding-invalid: selected Git executable changed")
+        for identity in Launcher:
+            launcher = platform.launcher_path(binding.launchers, identity)
+            if not launcher.is_file():
+                raise AccessError("binding-invalid: selected launcher is unavailable")
         return binding
 
     def validate(self, cwd: Path, platform: PlatformProtocol) -> Profile:
-        if _worktree_root(cwd) != self.root:
+        if _worktree_root(self.git, cwd) != self.root:
             raise AccessError(
                 "binding-invalid: GitHub employer access is bound to another worktree"
             )
-        _origin(self.profile, self.root)
+        _origin(self.profile, self.git, self.root)
         current = Binding.load(self.path, platform)
         if current != self:
             raise AccessError(
                 "binding-invalid: GitHub employer access selection changed"
             )
         return self.profile
+
+    def validate_execution(
+        self,
+        cwd: Path,
+        platform: PlatformProtocol,
+        environment: Mapping[str, str],
+    ) -> Profile:
+        profile = self.validate(cwd, platform)
+        if _worktree_root(self.git, cwd, environment) != self.root:
+            raise AccessError(
+                "binding-invalid: GitHub employer access is bound to another worktree"
+            )
+        return profile
 
     def activation_settings(self, base: Mapping[str, str]) -> dict[str, str]:
         path = next((value for key, value in base.items() if key.upper() == "PATH"), "")
@@ -330,10 +383,13 @@ class Binding:
         if self.runtime != expected:
             raise AccessError("binding-invalid: selected runtime is stale; run setup")
         script = self.runtime / "github_access.py"
-        expected_launcher = platform.launcher_contents(script, self.path, Launcher.GH)
-        launcher = platform.launcher_path(self.launchers, Launcher.GH)
-        if launcher.read_bytes() != expected_launcher:
-            raise AccessError("binding-invalid: selected launcher is stale; run setup")
+        for identity in Launcher:
+            expected_launcher = platform.launcher_contents(script, self.path, identity)
+            launcher = platform.launcher_path(self.launchers, identity)
+            if launcher.read_bytes() != expected_launcher:
+                raise AccessError(
+                    "binding-invalid: selected launcher is stale; run setup"
+                )
 
 
 def bind(
@@ -344,11 +400,12 @@ def bind(
     platform: PlatformProtocol,
 ) -> Binding:
     profile = Profile.load(profile_path)
+    git = platform.real_git(os.environ)
     requested_root = root.expanduser().resolve(strict=False)
-    exact_root = _worktree_root(root)
+    exact_root = _worktree_root(git, root)
     if requested_root != exact_root:
         raise AccessError("binding-invalid: setup requires the exact Git worktree root")
-    _origin(profile, exact_root)
+    _origin(profile, git, exact_root)
     selection = exact_root / ".agents" / "github-access.json"
     if selection.exists():
         existing = Binding.load(selection, platform)
@@ -371,6 +428,7 @@ def bind(
             "state_root": str(state_root.expanduser().resolve(strict=False)),
             "runtime": str(runtime),
             "launchers": str(launchers),
+            "git": str(git),
         },
     )
     return Binding.load(selection, platform)
