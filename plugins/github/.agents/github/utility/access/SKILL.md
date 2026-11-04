@@ -24,6 +24,7 @@ python -B <skill-directory>/scripts/github_access.py setup --profile <employer-p
 python -B <skill-directory>/scripts/github_access.py check --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py gh --binding <checkout>/.agents/github-access.json -- pr list
 python -B <skill-directory>/scripts/github_access.py git --binding <checkout>/.agents/github-access.json -- fetch origin
+python -B <skill-directory>/scripts/github_access.py native-git --binding <checkout>/.agents/github-access.json -- status
 ```
 
 Onboarding opens GitHub's fine-grained token form and a temporary local submission page. The human
@@ -40,9 +41,10 @@ Network Git uses an isolated HOME. If effective repository configuration changes
 including HOME-dependent `includeIf` conditions, the command fails closed. Use absolute or
 HOME-independent include conditions for employer Git configuration.
 
-Setup records the exact Git root, employer declaration and immutable runtime in a public binding. Each
-Git/gh invocation rechecks that selection and the employer origin before reading the credential. Leaving
-the selected checkout or changing its origin disables the binding. Git helpers only answer allowlisted
+Setup records the exact Git root, installed Git executable, employer declaration and immutable runtime in a public binding.
+The installed `git` launcher supports local work in the selected worktree and restricts network commands to
+allowlisted HTTPS repositories. Each Git/gh invocation rechecks that selection and the employer origin before
+reading the credential. Leaving the selected checkout or changing its origin disables the binding. Git helpers only answer allowlisted
 HTTPS repository requests; Git's store/erase callbacks cannot replace or delete the active version.
 
 The installed `gh` executable is a scoped launcher. Its supported commands use a closed argument grammar;
