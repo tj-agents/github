@@ -683,6 +683,61 @@ def test_git_credential_reader_checks_exact_protocol_host_path_and_login(
     assert vault.reads == ["a" * 32]
 
 
+def test_git_credential_reader_accepts_git_authentication_metadata(
+    profile: Profile,
+) -> None:
+    request = (
+        "capability[]=authtype\ncapability[]=state\n"
+        "protocol=https\nhost=github.com\npath=employer/private-project.git\n"
+        'wwwauth[]=Basic realm="GitHub"\nwwwauth[]=Bearer\n'
+        "state[]=other-helper:opaque\nfuture-attribute=value\n\n"
+    )
+    vault = FakeVault()
+    assert git_credential_response(profile, FakeState(), vault, "get", request) == (
+        f"username=employee\npassword={TOKEN}\n\n"
+    )
+    assert vault.reads == ["a" * 32]
+
+
+def test_native_git_credential_fill_accepts_authentication_challenge(
+    tmp_path: Path, platform: PlatformProtocol
+) -> None:
+    helper = tmp_path / "credential-helper.py"
+    helper.write_text(
+        "import sys\nfrom types import SimpleNamespace\n"
+        f"sys.path.insert(0, {str(Path(github_tools.__file__).parent)!r})\n"
+        "from access_core import Profile\n"
+        "from github_tools import git_credential_response\n"
+        "profile = Profile('employer', 'employee', 'private-project', "
+        "('private-project',), {'contents': 'read'})\n"
+        "state = SimpleNamespace(active=lambda: 'a' * 32)\n"
+        f"vault = SimpleNamespace(read=lambda version: {TOKEN!r})\n"
+        "sys.stdout.write(git_credential_response(\n"
+        "    profile, state, vault, sys.argv[-1], sys.stdin.read(4097)\n"
+        "))\n",
+        encoding="utf-8",
+    )
+    command = "!" + shlex.join([sys.executable, "-B", str(helper)])
+    result = subprocess.run(
+        [str(platform.real_git(os.environ)), "credential", "fill"],
+        input=(
+            "capability[]=authtype\ncapability[]=state\n"
+            "protocol=https\nhost=github.com\npath=employer/private-project.git\n"
+            'wwwauth[]=Basic realm="GitHub"\n\n'
+        ),
+        env=git_environment(os.environ, command, tmp_path),
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "username=employee\n" in result.stdout
+    assert f"password={TOKEN}\n" in result.stdout
+
+
+@pytest.mark.parametrize("metadata", ["", "capability[]=authtype\nwwwauth[]=Basic\n"])
 @pytest.mark.parametrize(
     "credential_request",
     [
@@ -691,14 +746,18 @@ def test_git_credential_reader_checks_exact_protocol_host_path_and_login(
         "protocol=https\nhost=github.com\npath=other/private-project\n",
         "protocol=https\nhost=github.com\npath=employer/private-project\nusername=other\n",
         "protocol=https\nhost=github.com\npath=employer/private-project\npath=employer/other-project\n",
+        "protocol=https\nhost=github.com\npath=employer/private-project\nwwwauth[]\n",
+        "protocol=https\nhost=github.com\npath=employer/private-project\nfuture=bad\x00value\n",
     ],
 )
 def test_git_credential_reader_rejects_before_vault(
-    profile: Profile, credential_request: str
+    profile: Profile, credential_request: str, metadata: str
 ) -> None:
     vault = FakeVault()
     with pytest.raises(AccessError):
-        git_credential_response(profile, FakeState(), vault, "get", credential_request)
+        git_credential_response(
+            profile, FakeState(), vault, "get", metadata + credential_request
+        )
     assert vault.reads == []
 
 

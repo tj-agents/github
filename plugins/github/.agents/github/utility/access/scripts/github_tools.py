@@ -742,11 +742,11 @@ def parse_git_credential(profile: Profile, request: str) -> Repository:
         if not line:
             continue
         key, separator, value = line.partition("=")
-        if (
-            not separator
-            or key in fields
-            or key not in {"protocol", "host", "path", "username"}
-        ):
+        if not separator or not key or "\x00" in line:
+            raise _invalid("credential-invalid: malformed Git credential request")
+        if key not in {"protocol", "host", "path", "username"}:
+            continue
+        if key in fields:
             raise _invalid("credential-invalid: malformed Git credential request")
         fields[key] = value
     if fields.get("protocol") != "https" or fields.get("host") != "github.com":
