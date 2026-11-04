@@ -1,4 +1,5 @@
 import argparse
+import io
 import json
 import os
 import subprocess
@@ -8,6 +9,8 @@ from pathlib import Path
 
 import access_core
 import github_binding
+import github_host_activation
+import github_hosts
 import github_mcp_install
 import github_mcp_stdio
 import github_native_git
@@ -119,6 +122,67 @@ def verify_tools(
         raise access_core.AccessError(
             "git-check-failed: employer repository read failed"
         )
+    verify_mcp(binding, platform)
+
+
+def verify_mcp(
+    binding: github_binding.Binding, platform: github_platform.PlatformProtocol
+) -> None:
+    profile = binding.validate(Path.cwd(), platform)
+    requests: list[dict[str, object]] = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "github-access-check", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "list_branches",
+                "arguments": {
+                    "owner": profile.organization,
+                    "repo": profile.verify_repository,
+                    "perPage": 1,
+                },
+            },
+        },
+    ]
+    output = io.StringIO()
+    code = github_mcp_stdio.serve(
+        binding,
+        platform,
+        io.StringIO("".join(json.dumps(frame) + "\n" for frame in requests)),
+        output,
+    )
+    try:
+        responses = [json.loads(line) for line in output.getvalue().splitlines()]
+    except ValueError as error:
+        raise access_core.AccessError(
+            "mcp-check-failed: employer repository read failed"
+        ) from error
+    response = responses[-1] if responses else None
+    result = response.get("result") if isinstance(response, dict) else None
+    if (
+        code
+        or not isinstance(response, dict)
+        or response.get("id") != 2
+        or "error" in response
+        or not isinstance(result, dict)
+        or result.get("isError", False) is not False
+        or not isinstance(result.get("content"), list)
+        or not result["content"]
+    ):
+        raise access_core.AccessError(
+            "mcp-check-failed: employer repository read failed"
+        )
 
 
 def parser() -> argparse.ArgumentParser:
@@ -134,6 +198,11 @@ def parser() -> argparse.ArgumentParser:
     setup.add_argument("--profile", type=Path)
     setup.add_argument("--root", type=Path, default=Path.cwd())
     setup.add_argument("--check", action="store_true")
+    activation = operations.add_parser("activate")
+    activation.add_argument("--binding", type=Path)
+    activation.add_argument("--host", type=github_hosts.NativeHost, required=True)
+    activation.add_argument("--host-executable", type=Path)
+    activation.add_argument("--check", action="store_true")
     for operation in ("gh", "git", "credential", "native-git"):
         command = operations.add_parser(operation)
         command.add_argument("--binding", type=Path)
@@ -160,6 +229,21 @@ def dispatch(
     arguments: argparse.Namespace, platform: github_platform.PlatformProtocol
 ) -> int:
     binding: github_binding.Binding | None
+    if arguments.operation == "activate":
+        binding = selected_binding(arguments.binding, platform)
+        print(
+            json.dumps(
+                github_host_activation.activate(
+                    binding,
+                    platform,
+                    arguments.host,
+                    os.environ,
+                    executable=arguments.host_executable,
+                    check=arguments.check,
+                )
+            )
+        )
+        return 0
     if arguments.operation == "setup":
         if arguments.check:
             binding = github_binding.Binding.load(
@@ -294,7 +378,7 @@ def dispatch(
                 "status": "credential-verified",
                 "organization": profile.organization,
                 "evidence": evidence,
-                "tool_readiness": "git-gh-verified-mcp-pending"
+                "tool_readiness": "git-gh-mcp-verified"
                 if binding is not None
                 else "not-yet-verified",
             }
