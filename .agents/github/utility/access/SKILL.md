@@ -1,6 +1,6 @@
 ---
 name: access
-description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate its fine-grained credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
+description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate a fine-grained or explicitly authorized classic credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
 kind: utility
 domain: github
 profile: core
@@ -22,6 +22,7 @@ python -B <skill-directory>/scripts/github_access.py setup --profile <employer-p
 python -B <skill-directory>/scripts/github_access.py activate --binding <checkout>/.agents/github-access.json --host codex
 python -B <skill-directory>/scripts/github_access.py activate --binding <checkout>/.agents/github-access.json --host claude --host-executable <absolute-native-claude>
 python -B <skill-directory>/scripts/github_access.py onboard --binding <checkout>/.agents/github-access.json
+python -B <skill-directory>/scripts/github_access.py onboard --binding <checkout>/.agents/github-access.json --token-kind classic
 python -B <skill-directory>/scripts/github_access.py rotate --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py check --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py mcp --binding <checkout>/.agents/github-access.json
@@ -30,11 +31,22 @@ python -B <skill-directory>/scripts/github_access.py git --binding <checkout>/.a
 python -B <skill-directory>/scripts/github_access.py native-git --binding <checkout>/.agents/github-access.json -- status
 ```
 
-Onboarding opens GitHub's fine-grained token form and a temporary local submission page. The human
-creates the token with the displayed organization as resource owner, selects only the declared
-repositories, obtains required organization approval, then pastes into that local page. Never request
-a token in chat, arguments, an environment dump, clipboard automation or a file. Classic tokens and
-account-wide OAuth are not fallbacks. Preserve the active version when candidate verification fails.
+The employer profile selects `token_kind`: `fine-grained` by default or `classic` when the user explicitly
+authorizes that broader credential. `onboard` and `rotate` accept `--token-kind` to select either form.
+Never switch credential types automatically after a refusal. Classic tokens can reach other repositories
+the account can access; organization checks in this utility constrain routing, not the token itself.
+
+Fine-grained onboarding opens GitHub's form and a temporary local submission page. The human selects
+the displayed resource owner and repository access, obtains any required organization approval, then
+pastes into the local page. Repository selection cannot be prefilled. A profile with `repositories: ["*"]`
+permits all repositories in its one organization; otherwise select only the listed repositories.
+
+Classic onboarding requests `repo`, plus `workflow` when the profile declares workflow writes. The human
+creates the token, selects its expiry, then uses Configure SSO to authorize the employer organization
+before submitting locally. An organization can disallow classic tokens; a denied classic token does not
+justify changing organization policy or adding administration scopes. No fine-grained administrator
+approval is requested by the classic flow. Never request a token in chat, arguments, an environment dump,
+clipboard automation or a file. Preserve the active version when candidate verification fails.
 
 The command uses GCM with Windows Credential Manager, or an explicitly configured Secret Service/GPG
 backend on Linux. An unavailable secure backend fails closed. It never configures a host-wide gh login

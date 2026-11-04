@@ -1,6 +1,6 @@
 ---
 name: access
-description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate its fine-grained credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
+description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate a fine-grained or explicitly authorized classic credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
 kind: utility
 domain: github
 profile: core

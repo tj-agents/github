@@ -6,11 +6,13 @@ import shutil
 import threading
 import urllib.parse
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from access_core import (
+    TOKEN_FORMS,
     AccessError,
     GCMVault,
     Profile,
@@ -23,6 +25,7 @@ from access_core import (
     validate_token,
     verify,
 )
+from github_tokens import TokenKind
 
 TOKEN = "github_pat_" + "a" * 70
 PREVIOUS = "github_pat_" + "b" * 70
@@ -108,6 +111,9 @@ class FakeAPI:
         ("expires_in", True),
         ("expires_in", 365),
         ("unexpected", "value"),
+        ("repositories", ["*", "private-project"]),
+        ("token_kind", "oauth"),
+        ("token_kind", []),
     ],
 )
 def test_profile_rejects_invalid_security_declaration(
@@ -148,9 +154,78 @@ def test_profile_accepts_private_organization_configuration_repository(
 @pytest.mark.parametrize(
     "token", ["ghp_" + "a" * 40, "bot-token", "", TOKEN + "\npassword=evil"]
 )
-def test_token_rejects_broad_or_injected_credentials(token: str) -> None:
+def test_token_rejects_malformed_or_injected_credentials(token: str) -> None:
     with pytest.raises(AccessError, match="token-invalid"):
         validate_token(token)
+
+
+def test_classic_form_requests_repository_and_selected_workflow_scopes(
+    profile: Profile,
+) -> None:
+    selected = replace(
+        profile, token_kind=TokenKind.CLASSIC, permissions={"workflows": "write"}
+    )
+    url = urllib.parse.urlsplit(selected.token_url())
+    fields = urllib.parse.parse_qs(url.query)
+    assert url.path == "/settings/tokens/new"
+    assert fields["scopes"] == ["repo,workflow"]
+    assert "target_name" not in fields
+    assert urllib.parse.urlsplit(selected.token_url(TokenKind.FINE_GRAINED)).path == (
+        "/settings/personal-access-tokens/new"
+    )
+
+
+@pytest.mark.parametrize(
+    ("token", "kind"),
+    [(TOKEN, TokenKind.FINE_GRAINED), ("ghp_" + "a" * 36, TokenKind.CLASSIC)],
+)
+def test_token_type_must_match_selected_enrollment(token: str, kind: TokenKind) -> None:
+    validate_token(token)
+    validate_token(token, kind)
+    other = (
+        TokenKind.CLASSIC if kind == TokenKind.FINE_GRAINED else TokenKind.FINE_GRAINED
+    )
+    with pytest.raises(AccessError, match="token-invalid"):
+        validate_token(token, other)
+
+
+def test_all_organization_repositories_preserves_owner_and_private_probe(
+    declaration: dict[str, Any],
+) -> None:
+    declaration["repositories"] = ["*"]
+    declaration["token_kind"] = "classic"
+    selected = Profile.from_data(declaration)
+    assert selected.allows_repository("EMPLOYER", "another-project")
+    assert not selected.allows_repository("other", "another-project")
+    assert not selected.allows_repository("employer", "..")
+    assert not selected.allows_repository("employer", "project/other")
+    api = FakeAPI(selected)
+    verify(selected, api)
+    assert "/repos/employer/private-project" in api.calls
+    assert not any("*" in call for call in api.calls)
+
+
+def test_classic_local_submission_requires_matching_token_and_sso_confirmation(
+    token_server: TokenServer,
+) -> None:
+    token_server.form = TOKEN_FORMS[TokenKind.CLASSIC]
+    with contextlib.closing(
+        http.client.HTTPConnection("127.0.0.1", token_server.server_port, timeout=3)
+    ) as connection:
+        connection.request("GET", "/test-nonce")
+        response = connection.getresponse()
+        page = response.read().decode()
+    assert "Configure SSO" in page
+    assert "Classic tokens can reach other repositories" in page
+    assert submit(token_server)[0] == 400
+    candidate = "ghp_" + "a" * 36
+    status, body = submit(
+        token_server,
+        body=urllib.parse.urlencode({"token": candidate, "owner_confirmed": "yes"}),
+    )
+    assert status == 200
+    assert token_server.token == candidate
+    assert candidate not in body
 
 
 def test_environment_removes_conflicting_identity_and_traces() -> None:
