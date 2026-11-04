@@ -392,6 +392,7 @@ def test_local_page_displays_exact_organization_and_repository_allowlist(
         assert "private-project" in body
         assert "employer" in body
         assert response.getheader("Cache-Control") == "no-store"
+        assert response.getheader("Referrer-Policy") == "same-origin"
 
 
 @pytest.mark.parametrize(
@@ -399,6 +400,7 @@ def test_local_page_displays_exact_organization_and_repository_allowlist(
     [
         {"host": "evil.example"},
         {"origin": "https://evil.example"},
+        {"origin": "null"},
         {"path": "/wrong-nonce"},
         {"body": "token=" + TOKEN},
         {"body": "token=" + TOKEN + "&owner_confirmed=no"},
