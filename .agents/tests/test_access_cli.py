@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import subprocess
@@ -8,6 +9,7 @@ import access_core
 import github_access
 import github_binding
 import github_mcp_install
+import github_mcp_stdio
 import github_native_git
 import github_platform
 import github_tools
@@ -724,3 +726,92 @@ def test_verify_tools_revalidates_scope_exit_before_git_probe(
         )
     assert gh_probes == 1
     assert git_probes == 0
+
+
+@pytest.mark.parametrize("tool_error", [False, True])
+def test_mcp_verification_exercises_bound_read_and_rejects_tool_errors(
+    selected: github_binding.Binding,
+    monkeypatch: pytest.MonkeyPatch,
+    tool_error: bool,
+) -> None:
+    monkeypatch.chdir(selected.root)
+    requests: list[dict[str, object]] = []
+
+    def serve(
+        binding: github_binding.Binding,
+        platform: github_platform.PlatformProtocol,
+        input_stream: io.StringIO,
+        output_stream: io.StringIO,
+    ) -> int:
+        assert binding == selected
+        requests.extend(
+            json.loads(line) for line in input_stream.getvalue().splitlines()
+        )
+        output_stream.write(
+            json.dumps({"jsonrpc": "2.0", "id": 1, "result": {}}) + "\n"
+        )
+        output_stream.write(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "result": {
+                        "isError": tool_error,
+                        "content": [{"type": "text", "text": "[]"}],
+                    },
+                }
+            )
+            + "\n"
+        )
+        return 0
+
+    monkeypatch.setattr(github_mcp_stdio, "serve", serve)
+    if tool_error:
+        with pytest.raises(access_core.AccessError, match="mcp-check-failed"):
+            github_access.verify_mcp(selected, github_platform.current_platform())
+    else:
+        github_access.verify_mcp(selected, github_platform.current_platform())
+    assert requests[-1] == {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "list_branches",
+            "arguments": {"owner": "employer", "repo": "private", "perPage": 1},
+        },
+    }
+
+
+def test_verify_tools_revalidates_before_mcp_probe(
+    selected: github_binding.Binding,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    platform = github_platform.current_platform()
+    monkeypatch.chdir(selected.root)
+    monkeypatch.setattr(platform, "real_gh", lambda: Path(sys.executable))
+    monkeypatch.setattr(
+        github_tools,
+        "run_gh",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            [], 0, "employer/private\n", ""
+        ),
+    )
+
+    def git_probe(*arguments: object, **keywords: object) -> int:
+        monkeypatch.chdir(tmp_path)
+        return 0
+
+    def forbidden(*arguments: object, **keywords: object) -> int:
+        pytest.fail("MCP must not start after scope exit")
+
+    monkeypatch.setattr(github_access, "run_git", git_probe)
+    monkeypatch.setattr(github_mcp_stdio, "serve", forbidden)
+    with pytest.raises(access_core.AccessError, match="binding-invalid"):
+        github_access.verify_tools(
+            selected,
+            selected.profile,
+            access_core.State(selected.state_root, selected.profile),
+            RotationVault(),
+            platform,
+        )

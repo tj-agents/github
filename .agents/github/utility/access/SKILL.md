@@ -18,9 +18,11 @@ required; finding an employer's name on disk does not select it.
 
 ```text
 python -B <skill-directory>/scripts/github_access.py check --profile <employer-profile.json>
-python -B <skill-directory>/scripts/github_access.py onboard --profile <employer-profile.json>
-python -B <skill-directory>/scripts/github_access.py rotate --profile <employer-profile.json>
 python -B <skill-directory>/scripts/github_access.py setup --profile <employer-profile.json> --root <checkout>
+python -B <skill-directory>/scripts/github_access.py activate --binding <checkout>/.agents/github-access.json --host codex
+python -B <skill-directory>/scripts/github_access.py activate --binding <checkout>/.agents/github-access.json --host claude --host-executable <absolute-native-claude>
+python -B <skill-directory>/scripts/github_access.py onboard --binding <checkout>/.agents/github-access.json
+python -B <skill-directory>/scripts/github_access.py rotate --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py check --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py mcp --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py gh --binding <checkout>/.agents/github-access.json -- pr list
@@ -61,8 +63,25 @@ are rejected. REST `api` supports repository reads. Use the owning repository's 
 writes and merges. Unsupported operations require a reviewed capability change, never a token export or
 an account-wide login. The token exists only in the authorized child environment and secure vault.
 
-`setup` installs the runtime and public binding. Native host settings and MCP wiring remain separate
-acceptance gates. Never claim this source command has configured a running Claude or Codex session.
+Run setup, activate each selected native host, then onboard from the exact selected checkout. These
+steps are part of the authorized access task. Resolve the actual native Claude executable through
+Agent's existing host resolver and pass its absolute path; shell functions are not executables.
+Activation merges public environment into project settings and registers the MCP command. Claude's
+native CLI owns its local MCP registration; an unrelated `employer_github` registration is a conflict.
+Custom `CLAUDE_CONFIG_DIR` is currently unsupported and fails before mutation.
+
+Preserve Codex project trust and existing shell policy; a policy that removes required public variables
+must be reconciled by its owner. Start a fresh host through Agent's existing launch path. For Claude,
+pass the activation result's `required_host_arguments` (`--settings` and the absolute project settings
+path), including on POSIX linked worktrees. Do not write another checkout's settings or add a launcher.
+Use `activate --host <host> --check --binding <binding>` to check configuration without registration
+writes. This verifies saved configuration, not a running host.
+
+Bound onboarding, rotation and check perform actual Git, gh and MCP repository reads; rotation restores
+the previous active version if any read fails. After publication/install, verify those reads in each
+fresh selected native host and verify that leaving the bound checkout denies employer access. Human
+token creation/submission, organization approval and repository review approval remain human actions.
+Do not claim full readiness until installed routing and fresh-host scope checks pass.
 
 `check` verifies identity, repository access and declared read capabilities. A successful read does not
 prove write permission or the token's resource-owner selection; the human must confirm the token form,
