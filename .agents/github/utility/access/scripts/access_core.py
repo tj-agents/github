@@ -23,6 +23,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+import github_token_classic
+import github_token_fine_grained
+from github_tokens import TokenForm, TokenKind
+
+TOKEN_FORMS: Mapping[TokenKind, TokenForm] = {
+    TokenKind.CLASSIC: github_token_classic,
+    TokenKind.FINE_GRAINED: github_token_fine_grained,
+}
+
 
 class AccessError(Exception):
     pass
@@ -36,6 +45,7 @@ class Profile:
     repositories: tuple[str, ...]
     permissions: Mapping[str, str]
     expires_in: int = 30
+    token_kind: TokenKind = TokenKind.FINE_GRAINED
 
     @classmethod
     def load(cls, path: Path) -> Profile:
@@ -58,6 +68,7 @@ class Profile:
             "repositories",
             "permissions",
             "expires_in",
+            "token_kind",
         }
         if not isinstance(data, dict) or set(data) - fields:
             raise AccessError("profile-invalid: unknown declaration fields")
@@ -75,7 +86,7 @@ class Profile:
             or len(repositories) > 100
         ):
             raise AccessError("profile-invalid: declare 1 to 100 repository names")
-        if any(
+        if repositories != ["*"] and any(
             not isinstance(repo, str)
             or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", repo)
             or repo in {".", ".."}
@@ -86,7 +97,13 @@ class Profile:
         if len({repo.casefold() for repo in repositories}) != len(repositories):
             raise AccessError("profile-invalid: duplicate repositories")
         verify = data.get("verify_repository")
-        if not isinstance(verify, str) or verify not in repositories:
+        if (
+            not isinstance(verify, str)
+            or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", verify)
+            or verify in {".", ".."}
+            or verify.endswith(".git")
+            or (repositories != ["*"] and verify not in repositories)
+        ):
             raise AccessError(
                 "profile-invalid: verification repository must be allowlisted"
             )
@@ -110,6 +127,12 @@ class Profile:
         expiry = data.get("expires_in", 30)
         if type(expiry) is not int or not 1 <= expiry <= 90:
             raise AccessError("profile-invalid: expiry must be 1 to 90 days")
+        try:
+            token_kind = TokenKind.parse(data.get("token_kind", "fine-grained"))
+        except (ValueError, TypeError) as error:
+            raise AccessError(
+                "profile-invalid: token_kind must be fine-grained or classic"
+            ) from error
         return cls(
             data["organization"],
             data["login"],
@@ -117,6 +140,7 @@ class Profile:
             tuple(repositories),
             permissions,
             expiry,
+            token_kind,
         )
 
     @property
@@ -125,18 +149,20 @@ class Profile:
             f"github.com/{self.organization}/{self.login}".casefold().encode()
         ).hexdigest()
 
-    def token_url(self) -> str:
-        fields = {
-            "name": f"Employer {self.organization} {self.login}",
-            "description": "Organization-scoped developer access",
-            "target_name": self.organization,
-            "expires_in": str(self.expires_in),
-            **self.permissions,
-        }
+    def allows_repository(self, owner: str, name: str) -> bool:
         return (
-            "https://github.com/settings/personal-access-tokens/new?"
-            + urllib.parse.urlencode(fields)
+            owner.casefold() == self.organization.casefold()
+            and re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", name) is not None
+            and name not in {".", ".."}
+            and not name.endswith(".git")
+            and (
+                self.repositories == ("*",)
+                or name.casefold() in {repo.casefold() for repo in self.repositories}
+            )
         )
+
+    def token_url(self, token_kind: TokenKind | None = None) -> str:
+        return TOKEN_FORMS[token_kind or self.token_kind].token_url(self)
 
 
 def private_environment(source: Mapping[str, str]) -> dict[str, str]:
@@ -316,10 +342,11 @@ class GCMVault:
             self.erase(version)
 
 
-def validate_token(token: str) -> None:
-    if not re.fullmatch(r"github_pat_[A-Za-z0-9_]{40,245}", token):
+def validate_token(token: str, token_kind: TokenKind | None = None) -> None:
+    kinds = tuple(TokenKind) if token_kind is None else (token_kind,)
+    if not any(re.fullmatch(kind.pattern, token) for kind in kinds):
         raise AccessError(
-            "token-invalid: submit a newly created fine-grained PAT in the local page"
+            "token-invalid: submit the selected personal access token in the local page"
         )
 
 
@@ -409,7 +436,12 @@ def verify(profile: Profile, api: ReadAPI) -> list[str]:
     ):
         raise AccessError("identity-mismatch: use the declared employer GitHub account")
     verified = ["identity"]
-    for repository in profile.repositories:
+    repositories = (
+        (profile.verify_repository,)
+        if profile.repositories == ("*",)
+        else profile.repositories
+    )
+    for repository in repositories:
         root = f"/repos/{profile.organization}/{repository}"
         value = api.read(root)
         if (
@@ -523,6 +555,7 @@ class TokenServer(http.server.HTTPServer):
     token: str | None = None
     nonce: str
     profile: Profile
+    form: TokenForm = github_token_fine_grained
 
     def get_request(self) -> tuple[Any, Any]:
         connection, address = super().get_request()
@@ -565,19 +598,21 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
             self._send(404, "Not found")
             return
         profile = self.server.profile
-        owner, login = html.escape(profile.organization), html.escape(profile.login)
+        owner = html.escape(profile.organization)
         repositories = ", ".join(html.escape(repo) for repo in profile.repositories)
+        if profile.repositories == ("*",):
+            repositories = f"All repositories in {owner} your account can access"
+        instructions, confirmation = self.server.form.instructions(profile)
+        label = self.server.form.kind.label
         self._send(
             200,
             f"<!doctype html><title>Employer GitHub access</title><h1>{owner}</h1>"
-            f"<p>Use GitHub account {login}. Select resource owner {owner} "
-            "and only the declared repositories.</p>"
+            f"<p>{instructions}</p>"
             f"<p>Repositories: {repositories}</p>"
-            '<form method="post"><label>Fine-grained token '
+            f'<form method="post"><label>{label} '
             '<input name="token" type="password" autocomplete="off" required>'
             '</label><p><label><input type="checkbox" name="owner_confirmed" '
-            f'value="yes" required>I confirmed resource owner {owner} '
-            "and selected repositories in GitHub.</label></p>"
+            f'value="yes" required>{confirmation}</label></p>'
             "<button>Validate and save securely</button></form>",
         )
 
@@ -607,10 +642,11 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
             ):
                 raise ValueError("Invalid fields")
             token = fields["token"][0]
-            validate_token(token)
+            validate_token(token, self.server.form.kind)
         except (ValueError, OSError, AccessError):
             self._send(
-                400, "Submit a fine-grained token and confirm its resource owner"
+                400,
+                "Submit the selected token type and confirm its GitHub authorization",
             )
             return
         self.server.token = token
@@ -621,19 +657,25 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
         )
 
 
-def receive_token(profile: Profile, timeout: float = 900) -> str:
+def receive_token(
+    profile: Profile, timeout: float = 900, *, token_kind: TokenKind | None = None
+) -> str:
+    token_kind = token_kind or profile.token_kind
+    form = TOKEN_FORMS[token_kind]
+    token_url = form.token_url(profile)
     with TokenServer(("127.0.0.1", 0), TokenHandler) as server:
         server.nonce, server.profile = secrets.token_urlsafe(32), profile
+        server.form = form
         server.timeout = 1
         local_url = f"http://127.0.0.1:{server.server_port}/{server.nonce}"
         print(
-            f"Create a fine-grained token for {profile.organization}; "
+            f"Create a {token_kind} token for {profile.organization}; "
             "submit it in the local page.",
             flush=True,
         )
-        print("GitHub: " + profile.token_url(), flush=True)
+        print("GitHub: " + token_url, flush=True)
         print("Local page: " + local_url, flush=True)
-        webbrowser.open(profile.token_url())
+        webbrowser.open(token_url)
         webbrowser.open(local_url)
         deadline = time.monotonic() + timeout
         while server.token is None and time.monotonic() < deadline:

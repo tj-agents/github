@@ -14,6 +14,7 @@ import github_native_git
 import github_platform
 import github_tools
 import pytest
+from github_tokens import TokenKind
 
 TOKEN = "github_pat_" + "a" * 40
 
@@ -602,7 +603,9 @@ def test_cli_revalidates_binding_after_receiving_token_before_rotation(
     def vault_factory(*arguments: object) -> RotationVault:
         return vault
 
-    def receive_token(profile: access_core.Profile) -> str:
+    def receive_token(
+        profile: access_core.Profile, *, token_kind: TokenKind | None = None
+    ) -> str:
         subprocess.run(
             [
                 "git",
@@ -629,6 +632,14 @@ def test_cli_revalidates_binding_after_receiving_token_before_rotation(
     assert "binding-invalid" in capsys.readouterr().err
     assert vault.checked
     assert vault.writes == []
+
+
+@pytest.mark.parametrize("token_kind", ["fine-grained", "classic"])
+def test_cli_accepts_explicit_token_kind_for_enrollment(token_kind: str) -> None:
+    arguments = github_access.parser().parse_args(
+        ["onboard", "--token-kind", token_kind]
+    )
+    assert arguments.token_kind == token_kind
 
 
 def test_verify_tools_revalidates_before_git_probe(

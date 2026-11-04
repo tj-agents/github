@@ -165,11 +165,7 @@ def _allowed_repository(
 ) -> None:
     owner = _string(arguments.get("owner"))
     repository = _string(arguments.get("repo"))
-    if (
-        owner.casefold() != profile.organization.casefold()
-        or repository.casefold()
-        not in {item.casefold() for item in profile.repositories}
-    ):
+    if not profile.allows_repository(owner, repository):
         raise MCPError(-32602, "tool repository is not allowlisted")
 
 
