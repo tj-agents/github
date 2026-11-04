@@ -22,6 +22,7 @@ python -B <skill-directory>/scripts/github_access.py onboard --profile <employer
 python -B <skill-directory>/scripts/github_access.py rotate --profile <employer-profile.json>
 python -B <skill-directory>/scripts/github_access.py setup --profile <employer-profile.json> --root <checkout>
 python -B <skill-directory>/scripts/github_access.py check --binding <checkout>/.agents/github-access.json
+python -B <skill-directory>/scripts/github_access.py mcp --binding <checkout>/.agents/github-access.json
 python -B <skill-directory>/scripts/github_access.py gh --binding <checkout>/.agents/github-access.json -- pr list
 python -B <skill-directory>/scripts/github_access.py git --binding <checkout>/.agents/github-access.json -- fetch origin
 python -B <skill-directory>/scripts/github_access.py native-git --binding <checkout>/.agents/github-access.json -- status
@@ -46,6 +47,13 @@ The installed `git` launcher supports local work in the selected worktree and re
 allowlisted HTTPS repositories. Each Git/gh invocation rechecks that selection and the employer origin before
 reading the credential. Leaving the selected checkout or changing its origin disables the binding. Git helpers only answer allowlisted
 HTTPS repository requests; Git's store/erase callbacks cannot replace or delete the active version.
+
+The `mcp` command is a stdio gateway for `get_file_contents`, `list_branches` and
+`pull_request_read`. It serves initialization and tool discovery without reading the credential, then
+validates each tool's owner and repository against the binding before starting the pinned read-only
+GitHub MCP server. `setup` installs the verified upstream archive and binary under the selected state
+root; `check --binding` verifies that cache. It never exposes upstream resources, prompts, completion
+or unrestricted tool methods.
 
 The installed `gh` executable is a scoped launcher. Its supported commands use a closed argument grammar;
 unknown commands, alternate hosts, cross-repository targets, browser/editor launches and arbitrary GraphQL

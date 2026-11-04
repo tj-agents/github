@@ -154,8 +154,12 @@ def _atomic_json(path: Path, value: Mapping[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _source_files(directory: Path) -> list[Path]:
-    files = sorted(path for path in directory.glob("*.py") if path.is_file())
+def _runtime_files(directory: Path) -> list[Path]:
+    files = sorted(
+        path
+        for path in (*directory.glob("*.py"), *directory.glob("github_mcp_*.json"))
+        if path.is_file()
+    )
     if not files or not any(path.name == "github_access.py" for path in files):
         raise AccessError("binding-invalid: source directory lacks github_access.py")
     return files
@@ -163,7 +167,7 @@ def _source_files(directory: Path) -> list[Path]:
 
 def _runtime_version(directory: Path) -> str:
     digest = hashlib.sha256()
-    for source in _source_files(directory):
+    for source in _runtime_files(directory):
         digest.update(source.name.encode("utf-8"))
         digest.update(b"\0")
         digest.update(source.read_bytes())
@@ -178,7 +182,7 @@ def _runtime_directory(state_root: Path, source_directory: Path) -> Path:
     if destination.exists():
         if not destination.is_dir() or any(
             destination.joinpath(source.name).read_bytes() != source.read_bytes()
-            for source in _source_files(source_directory)
+            for source in _runtime_files(source_directory)
         ):
             raise AccessError(
                 "binding-invalid: existing runtime payload does not match its version"
@@ -187,14 +191,14 @@ def _runtime_directory(state_root: Path, source_directory: Path) -> Path:
     base.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix="runtime-", dir=base))
     try:
-        for source in _source_files(source_directory):
+        for source in _runtime_files(source_directory):
             shutil.copyfile(source, temporary / source.name)
         try:
             temporary.rename(destination)
         except FileExistsError as error:
             if not destination.is_dir() or any(
                 destination.joinpath(source.name).read_bytes() != source.read_bytes()
-                for source in _source_files(source_directory)
+                for source in _runtime_files(source_directory)
             ):
                 raise AccessError(
                     "binding-invalid: concurrent runtime payload differs"
