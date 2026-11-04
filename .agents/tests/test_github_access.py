@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from github_access import (
+from access_core import (
     AccessError,
     GCMVault,
     Profile,
@@ -303,7 +303,7 @@ def test_different_organizations_do_not_share_vault_or_state_keys(
 def test_gcm_never_accepts_plaintext_backend(
     profile: Profile, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("github_access.sys.platform", "linux")
+    monkeypatch.setattr("access_core.sys.platform", "linux")
     with pytest.raises(AccessError, match="vault-unavailable"):
         GCMVault(profile, {"GCM_CREDENTIAL_STORE": "plaintext"})
 
