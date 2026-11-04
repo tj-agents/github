@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1486,3 +1487,42 @@ def test_windows_git_resolver_uses_per_user_install(tmp_path: Path) -> None:
         github_windows.real_git({"PATH": "", "LOCALAPPDATA": str(local_app_data)})
         == expected.resolve()
     )
+
+
+@pytest.mark.parametrize("helper_directory", ["libexec/git-core", "LiBeXeC/GiT-CoRe"])
+def test_windows_git_resolver_ignores_internal_git_helper(
+    tmp_path: Path, helper_directory: str
+) -> None:
+    internal = tmp_path / helper_directory / "git.exe"
+    internal.parent.mkdir(parents=True)
+    internal.write_bytes(b"internal")
+    selected = tmp_path / "bin" / "git.exe"
+    selected.parent.mkdir()
+    selected.write_bytes(b"selected")
+    environment = {
+        "PATH": os.pathsep.join((str(internal.parent), str(selected.parent)))
+    }
+    assert github_windows.real_git(environment) == selected.resolve()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Git for Windows helper launch")
+def test_windows_git_selection_survives_git_shell_child(tmp_path: Path) -> None:
+    environment = git_environment(os.environ, "unused", tmp_path)
+    selected = github_windows.real_git(environment)
+    source = str(Path(github_windows.__file__).parent)
+    program = (
+        "import os,sys;"
+        f"sys.path.insert(0,{source!r});"
+        "import github_windows;"
+        "print(github_windows.real_git(os.environ))"
+    )
+    alias = "!" + shlex.join([sys.executable, "-B", "-c", program])
+    result = subprocess.run(
+        [str(selected), "-c", f"alias.probe={alias}", "probe"],
+        cwd=tmp_path,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert Path(result.stdout.strip()) == selected
