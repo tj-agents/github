@@ -1,0 +1,415 @@
+import argparse
+import io
+import json
+import os
+import subprocess
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+import access_core
+import github_binding
+import github_host_activation
+import github_hosts
+import github_mcp_install
+import github_mcp_stdio
+import github_native_git
+import github_platform
+import github_tools
+from github_tokens import TokenKind
+
+
+def state_root() -> Path:
+    return Path(
+        os.environ.get("AGENT_STATE_DIRECTORY", str(Path.home() / ".agents-state"))
+    )
+
+
+def git_read(executable: Path, root: Path, arguments: Sequence[str]) -> str:
+    environment = access_core.private_environment(os.environ)
+    environment.update(
+        GIT_CONFIG_GLOBAL=os.devnull,
+        GIT_CONFIG_SYSTEM=os.devnull,
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_CONFIG_COUNT="0",
+        GIT_TERMINAL_PROMPT="0",
+    )
+    try:
+        result = subprocess.run(
+            [str(executable), *arguments],
+            cwd=root,
+            env=environment,
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise access_core.AccessError(
+            "git-scope-invalid: Git inspection failed"
+        ) from error
+    if result.returncode:
+        raise access_core.AccessError(
+            "git-scope-invalid: inspect the selected repository"
+        )
+    return result.stdout.strip()
+
+
+def helper_command(binding: github_binding.Binding) -> str:
+    return github_native_git.helper_command(binding)
+
+
+def configure_mcp_stdio() -> None:
+    input_reconfigure = getattr(sys.stdin, "reconfigure", None)
+    output_reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if input_reconfigure is None or output_reconfigure is None:
+        raise access_core.AccessError(
+            "mcp-stdio-unavailable: configure UTF-8 MCP streams"
+        )
+    try:
+        input_reconfigure(encoding="utf-8", errors="strict")
+        output_reconfigure(encoding="utf-8", errors="strict")
+    except (OSError, ValueError) as error:
+        raise access_core.AccessError(
+            "mcp-stdio-unavailable: configure UTF-8 MCP streams"
+        ) from error
+
+
+def run_git(
+    binding: github_binding.Binding,
+    profile: access_core.Profile,
+    arguments: Sequence[str],
+) -> int:
+    result = github_tools.run_git(
+        profile,
+        binding.git,
+        arguments,
+        remotes=github_native_git.remotes(binding.git, Path.cwd()),
+        helper_command=helper_command(binding),
+        cwd=Path.cwd(),
+    )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.returncode
+
+
+def verify_tools(
+    binding: github_binding.Binding,
+    profile: access_core.Profile,
+    state: access_core.State,
+    vault: access_core.Vault,
+    platform: github_platform.PlatformProtocol,
+) -> None:
+    profile = binding.validate(Path.cwd(), platform)
+    repository = f"{profile.organization}/{profile.verify_repository}"
+    result = github_tools.run_gh(
+        profile,
+        state,
+        vault,
+        platform.real_gh(),
+        ["api", f"repos/{repository}", "--jq", ".full_name"],
+        platform=platform,
+        cwd=binding.root,
+        default_repository=repository,
+    )
+    if result.returncode or result.stdout.strip().casefold() != repository.casefold():
+        raise access_core.AccessError(
+            "gh-check-failed: employer repository read failed"
+        )
+    profile = binding.validate(Path.cwd(), platform)
+    if run_git(
+        binding, profile, ["ls-remote", f"https://github.com/{repository}.git", "HEAD"]
+    ):
+        raise access_core.AccessError(
+            "git-check-failed: employer repository read failed"
+        )
+    verify_mcp(binding, platform)
+
+
+def verify_mcp(
+    binding: github_binding.Binding, platform: github_platform.PlatformProtocol
+) -> None:
+    profile = binding.validate(Path.cwd(), platform)
+    requests: list[dict[str, object]] = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "github-access-check", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "list_branches",
+                "arguments": {
+                    "owner": profile.organization,
+                    "repo": profile.verify_repository,
+                    "perPage": 1,
+                },
+            },
+        },
+    ]
+    output = io.StringIO()
+    code = github_mcp_stdio.serve(
+        binding,
+        platform,
+        io.StringIO("".join(json.dumps(frame) + "\n" for frame in requests)),
+        output,
+    )
+    try:
+        responses = [json.loads(line) for line in output.getvalue().splitlines()]
+    except ValueError as error:
+        raise access_core.AccessError(
+            "mcp-check-failed: employer repository read failed"
+        ) from error
+    response = responses[-1] if responses else None
+    result = response.get("result") if isinstance(response, dict) else None
+    if (
+        code
+        or not isinstance(response, dict)
+        or response.get("id") != 2
+        or "error" in response
+        or not isinstance(result, dict)
+        or result.get("isError", False) is not False
+        or not isinstance(result.get("content"), list)
+        or not result["content"]
+    ):
+        raise access_core.AccessError(
+            "mcp-check-failed: employer repository read failed"
+        )
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(
+        description="Secure organization-scoped GitHub access"
+    )
+    operations = result.add_subparsers(dest="operation", required=True)
+    for operation in ("onboard", "rotate", "check"):
+        command = operations.add_parser(operation)
+        command.add_argument("--profile", type=Path)
+        command.add_argument("--binding", type=Path)
+        if operation != "check":
+            command.add_argument(
+                "--token-kind",
+                type=TokenKind.parse,
+                choices=tuple(TokenKind),
+            )
+    setup = operations.add_parser("setup")
+    setup.add_argument("--profile", type=Path)
+    setup.add_argument("--root", type=Path, default=Path.cwd())
+    setup.add_argument("--check", action="store_true")
+    activation = operations.add_parser("activate")
+    activation.add_argument("--binding", type=Path)
+    activation.add_argument("--host", type=github_hosts.NativeHost, required=True)
+    activation.add_argument("--host-executable", type=Path)
+    activation.add_argument("--check", action="store_true")
+    for operation in ("gh", "git", "credential", "native-git"):
+        command = operations.add_parser(operation)
+        command.add_argument("--binding", type=Path)
+        command.add_argument("arguments", nargs=argparse.REMAINDER)
+    mcp = operations.add_parser("mcp")
+    mcp.add_argument("--binding", type=Path, required=True)
+    return result
+
+
+def selected_binding(
+    path: Path | None, platform: github_platform.PlatformProtocol
+) -> github_binding.Binding:
+    if path is None:
+        inherited = os.environ.get("GITHUB_ACCESS_BINDING")
+        path = (
+            Path(inherited) if inherited else Path.cwd() / ".agents/github-access.json"
+        )
+    binding = github_binding.Binding.load(path, platform)
+    binding.validate(Path.cwd(), platform)
+    return binding
+
+
+def dispatch(
+    arguments: argparse.Namespace, platform: github_platform.PlatformProtocol
+) -> int:
+    binding: github_binding.Binding | None
+    if arguments.operation == "activate":
+        binding = selected_binding(arguments.binding, platform)
+        print(
+            json.dumps(
+                github_host_activation.activate(
+                    binding,
+                    platform,
+                    arguments.host,
+                    os.environ,
+                    executable=arguments.host_executable,
+                    check=arguments.check,
+                )
+            )
+        )
+        return 0
+    if arguments.operation == "setup":
+        if arguments.check:
+            binding = github_binding.Binding.load(
+                arguments.root / ".agents/github-access.json", platform
+            )
+            binding.check(arguments.root, Path(__file__).resolve().parent, platform)
+        else:
+            if arguments.profile is None:
+                raise access_core.AccessError(
+                    "profile-required: select the employer declaration"
+                )
+            binding = github_binding.bind(
+                arguments.profile,
+                arguments.root,
+                state_root(),
+                Path(__file__).resolve().parent,
+                platform,
+            )
+        if arguments.check:
+            github_mcp_install.check(binding.state_root, platform.mcp_release())
+        else:
+            github_mcp_install.install(binding.state_root, platform.mcp_release())
+        print(
+            json.dumps(
+                {
+                    "status": "scope-bound",
+                    "binding": str(binding.path),
+                    "native_hosts": "not-yet-configured",
+                }
+            )
+        )
+        return 0
+    if arguments.operation == "native-git":
+        if arguments.binding is None:
+            raise access_core.AccessError("binding-required: select the exact binding")
+        binding = github_binding.Binding.load(arguments.binding, platform)
+        command = arguments.arguments
+        if command[:1] == ["--"]:
+            command = command[1:]
+        return github_native_git.run(binding, command, platform)
+    if arguments.operation in {"gh", "git", "credential"}:
+        binding = selected_binding(arguments.binding, platform)
+        profile = binding.validate(Path.cwd(), platform)
+        state = access_core.State(binding.state_root, profile)
+        vault = access_core.GCMVault(profile, os.environ, binding.git)
+        command = arguments.arguments
+        if command[:1] == ["--"]:
+            command = command[1:]
+        if arguments.operation == "credential":
+            if len(command) != 1:
+                raise access_core.AccessError(
+                    "credential-invalid: requires one Git operation"
+                )
+            response = github_tools.git_credential_response(
+                profile, state, vault, command[0], sys.stdin.read(4097)
+            )
+            sys.stdout.write(response)
+            return 0
+        if arguments.operation == "git":
+            return run_git(binding, profile, command)
+        result = github_tools.run_gh(
+            profile,
+            state,
+            vault,
+            platform.real_gh(),
+            command,
+            platform=platform,
+            cwd=Path.cwd(),
+            default_repository=git_read(
+                binding.git, Path.cwd(), ["remote", "get-url", "origin"]
+            ),
+        )
+        sys.stdout.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        return result.returncode
+    if arguments.operation == "mcp":
+        binding = selected_binding(arguments.binding, platform)
+        configure_mcp_stdio()
+        return github_mcp_stdio.serve(binding, platform)
+    binding = (
+        selected_binding(arguments.binding, platform)
+        if arguments.binding is not None
+        else None
+    )
+    if arguments.profile is not None and binding is not None:
+        raise access_core.AccessError("scope-ambiguous: use one profile or binding")
+    if binding is not None:
+        profile = binding.validate(Path.cwd(), platform)
+    elif arguments.profile is not None:
+        profile = access_core.Profile.load(arguments.profile)
+    else:
+        raise access_core.AccessError(
+            "profile-required: select the employer declaration"
+        )
+    state = access_core.State(
+        binding.state_root if binding is not None else state_root(), profile
+    )
+    vault = access_core.GCMVault(
+        profile,
+        os.environ,
+        binding.git if binding is not None else platform.real_git(os.environ),
+    )
+    if arguments.operation == "check":
+        version = state.active()
+        if version is None:
+            raise access_core.AccessError("credential-missing: run employer onboarding")
+        evidence = access_core.verify(
+            profile, access_core.GitHubAPI(vault.read(version))
+        )
+        if binding is not None:
+            verify_tools(binding, profile, state, vault, platform)
+            github_mcp_install.check(binding.state_root, platform.mcp_release())
+    else:
+        vault.check()
+        token = access_core.receive_token(profile, token_kind=arguments.token_kind)
+        if binding is not None:
+            profile = binding.validate(Path.cwd(), platform)
+        evidence = access_core.rotate(
+            profile,
+            state,
+            vault,
+            token,
+            after_select=(
+                lambda: verify_tools(binding, profile, state, vault, platform)
+            )
+            if binding is not None
+            else None,
+        )
+    print(
+        json.dumps(
+            {
+                "status": "credential-verified",
+                "organization": profile.organization,
+                "evidence": evidence,
+                "tool_readiness": "git-gh-mcp-verified"
+                if binding is not None
+                else "not-yet-verified",
+            }
+        )
+    )
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    if sys.version_info < (3, 12):
+        print("Python 3.12 or newer is required", file=sys.stderr)
+        return 2
+    arguments = parser().parse_args(argv)
+    try:
+        return dispatch(arguments, github_platform.current_platform())
+    except (access_core.AccessError, OSError, subprocess.SubprocessError) as error:
+        message = (
+            str(error)
+            if isinstance(error, access_core.AccessError)
+            else ("local-operation-failed: check installed tools and public state")
+        )
+        print(message, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

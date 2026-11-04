@@ -3,11 +3,29 @@
   "dependencies": [],
   "profiles": {
     "core": [
+      "access",
       "collaboration"
     ]
   },
   "compatibilitySkillAliases": {},
   "skills": [
+    {
+      "name": "access",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "explicitly selected employer GitHub access"
+      ],
+      "requires": [
+        "python",
+        "git",
+        "Git Credential Manager",
+        "secure credential backend"
+      ],
+      "provenance": [
+        "house"
+      ]
+    },
     {
       "name": "collaboration",
       "kind": "utility",
