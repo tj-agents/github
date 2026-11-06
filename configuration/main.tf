@@ -1,5 +1,7 @@
 terraform {
   cloud {
+    organization = "tomjseery"
+
     workspaces {
       name = "github-tj-agents"
     }
