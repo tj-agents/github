@@ -8,6 +8,7 @@ from configuration_declaration import (
     Role,
     parse,
 )
+from configuration_packages import Change, changes
 
 
 def declaration(**overrides: Any) -> dict[str, Any]:
@@ -29,6 +30,20 @@ def test_parses_package_actions_access() -> None:
     assert parsed.packages == (
         Package(PackageType.NUGET, "Example.Kernel", {"platform": Role.WRITE}),
     )
+
+
+def test_changes_cover_only_declared_drift() -> None:
+    package = Package(
+        PackageType.NUGET, "Example.Kernel", {"platform": Role.WRITE, "api": Role.READ}
+    )
+
+    pending = changes(package, {"api": Role.READ, "legacy": Role.ADMIN})
+
+    assert pending == [Change(package, "platform", None, Role.WRITE)]
+    assert pending[0].describe() == "nuget/Example.Kernel: platform add write"
+    assert changes(package, {"platform": Role.READ, "api": Role.READ})[
+        0
+    ].describe() == ("nuget/Example.Kernel: platform read -> write")
 
 
 @pytest.mark.parametrize(
