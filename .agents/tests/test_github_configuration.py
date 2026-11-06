@@ -51,7 +51,15 @@ def test_changes_cover_only_declared_drift() -> None:
     [
         (declaration(schema_version=2), "schema_version must be 1"),
         (declaration(owner=""), "owner must be a nonempty string"),
-        (declaration(repositories={}), "unknown fields: repositories"),
+        (declaration(teams={}), "unknown fields: teams"),
+        (
+            declaration(repositories={"r": {"rulesets": {"m": {"rules": [{}]}}}}),
+            "repositories.r.rulesets.m.rules must be a list of rules with a type",
+        ),
+        (
+            declaration(repositories={"r": {"webhooks": {}}}),
+            "repositories.r has unknown fields: webhooks",
+        ),
         (declaration(packages={"pypi": {}}), "packages.pypi must be one of"),
         (
             declaration(

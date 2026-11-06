@@ -51,7 +51,9 @@
       ],
       "requires": [
         "uv",
-        "Google Chrome"
+        "Google Chrome",
+        "Terraform",
+        "HCP Terraform"
       ],
       "provenance": [
         "house"

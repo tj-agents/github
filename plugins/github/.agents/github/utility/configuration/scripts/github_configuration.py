@@ -10,6 +10,8 @@ from pathlib import Path
 import configuration_browser
 import configuration_declaration
 import configuration_packages
+import configuration_terraform
+from playwright.sync_api import Page
 
 
 def parse(arguments: Sequence[str]) -> argparse.Namespace:
@@ -26,13 +28,13 @@ def converge(declaration: configuration_declaration.Declaration, *, write: bool)
     drift = 0
     with configuration_browser.browser(headless=True) as page:
         for package in declaration.packages:
-            if write:
-                done = configuration_packages.apply(page, declaration.owner, package)
-                unmanaged: list[str] = []
-            else:
-                done, unmanaged = configuration_packages.plan(
-                    page, declaration.owner, package
+            try:
+                done, unmanaged = _converge_package(
+                    page, declaration.owner, package, write
                 )
+            except configuration_packages.PackageMissingError as missing:
+                print(missing, flush=True)
+                continue
             drift += len(done)
             for change in done:
                 print(("applied " if write else "") + change.describe(), flush=True)
@@ -40,6 +42,17 @@ def converge(declaration: configuration_declaration.Declaration, *, write: bool)
                 print(f"{package.type}/{package.name}: {repository} unmanaged")
     print(f"{drift} change(s) {'applied' if write else 'pending'}.")
     return 0
+
+
+def _converge_package(
+    page: Page,
+    owner: str,
+    package: configuration_declaration.Package,
+    write: bool,
+) -> tuple[list[configuration_packages.Change], list[str]]:
+    if write:
+        return configuration_packages.apply(page, owner, package), []
+    return configuration_packages.plan(page, owner, package)
 
 
 def main(arguments: Sequence[str]) -> int:
@@ -50,8 +63,19 @@ def main(arguments: Sequence[str]) -> int:
             print(f"Signed in to GitHub as {account}.")
             return 0
         declaration = configuration_declaration.load(options.declaration)
-        return converge(declaration, write=options.command == "apply")
-    except configuration_declaration.DeclarationError as error:
+        if declaration.packages:
+            converge(declaration, write=options.command == "apply")
+        root = configuration_terraform.owner_root(options.declaration)
+        if root is not None:
+            if options.command == "plan":
+                configuration_terraform.plan(root)
+            else:
+                print(f"API settings in {root} apply when the declaration merges.")
+        return 0
+    except (
+        configuration_declaration.DeclarationError,
+        configuration_terraform.TerraformError,
+    ) as error:
         print(error, file=sys.stderr)
         return 1
     except (
