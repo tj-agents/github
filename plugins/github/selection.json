@@ -4,7 +4,8 @@
   "profiles": {
     "core": [
       "access",
-      "collaboration"
+      "collaboration",
+      "configuration"
     ]
   },
   "compatibilitySkillAliases": {},
@@ -36,6 +37,21 @@
       "requires": [
         "python",
         "gh"
+      ],
+      "provenance": [
+        "house"
+      ]
+    },
+    {
+      "name": "configuration",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "explicitly requested GitHub settings changes"
+      ],
+      "requires": [
+        "uv",
+        "Google Chrome"
       ],
       "provenance": [
         "house"
