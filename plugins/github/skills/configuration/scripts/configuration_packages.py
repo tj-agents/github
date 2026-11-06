@@ -16,6 +16,10 @@ class PackageAccessError(Exception):
     pass
 
 
+class PackageMissingError(PackageAccessError):
+    pass
+
+
 @dataclass(frozen=True)
 class Change:
     package: Package
@@ -49,7 +53,7 @@ def _open(page: Page, owner: str, package: Package) -> None:
             if not response.ok:
                 raise PackageAccessError(f"{url} returned {response.status}")
             return
-    raise PackageAccessError(f"{owner} has no {package.type} package {package.name}")
+    raise PackageMissingError(f"{package.type}/{package.name}: not published yet")
 
 
 def _section(page: Page) -> Locator:

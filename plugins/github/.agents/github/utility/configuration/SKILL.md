@@ -5,7 +5,7 @@ kind: utility
 domain: github
 profile: core
 applicability: explicitly requested GitHub settings changes
-requires: uv, Google Chrome
+requires: uv, Google Chrome, Terraform, HCP Terraform
 provenance: house
 ---
 
@@ -33,10 +33,35 @@ uv run <skill-directory>/scripts/github_configuration.py apply --declaration <pl
 }
 ```
 
-`plan` prints each declared difference and exits without writing. `apply` makes only those differences,
-then reloads and fails unless the page reads back as declared. Repositories the declaration does not name
-are reported `unmanaged` and never removed. Roles are `read`, `write` and `admin`; package types are
-`container`, `maven`, `npm`, `nuget` and `rubygems`.
+Settings with an API live under `repositories` as native GitHub data and converge through Terraform's
+`integrations/github` provider. Each owner keeps a small root beside its declaration: a `main.tf` with an
+HCP Terraform `cloud` block, `provider "github" { app_auth {} }` and this skill's `terraform` module given
+`jsondecode(file("github-configuration.json"))`, plus `import` blocks for settings that already exist. The
+HCP workspace holds the state lock and the administrative App credential, plans pull requests and applies
+on merge; agents never hold that credential.
+
+```json
+"repositories": {
+  "github-actions": {
+    "rulesets": {
+      "merge-policy": {
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+        "bypass_actors": [{ "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" }],
+        "rules": [{ "type": "deletion" }, { "type": "pull_request", "parameters": { "required_approving_review_count": 1 } }]
+      }
+    }
+  }
+}
+```
+
+`plan` prints each declared package difference without writing, then runs `terraform plan` for the root.
+`apply` changes only package differences, then reloads and fails unless the page reads back as declared;
+API settings apply when the declaration merges. Repositories a package does not name are reported
+`unmanaged` and never removed; a package not yet published is reported and skipped. Package roles are
+`read`, `write` and `admin`; types are `container`, `maven`, `npm`, `nuget` and `rubygems`. Rule types the
+module does not converge fail the plan.
 
 API-less settings run headless in installed Chrome through a persistent profile at
 `<agent-state>/github-configuration/browser-profile` (`AGENT_STATE_DIRECTORY`, default `~/.agents-state`).

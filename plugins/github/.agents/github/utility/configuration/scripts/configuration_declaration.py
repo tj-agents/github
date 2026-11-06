@@ -76,9 +76,33 @@ def _package(package_type: PackageType, name: str, value: Any) -> Package:
     return Package(package_type, name, roles)
 
 
+def _ruleset(where: str, value: Any) -> None:
+    body = _object(value, where)
+    _keys(
+        body, {"target", "enforcement", "conditions", "bypass_actors", "rules"}, where
+    )
+    rules = body.get("rules")
+    if not isinstance(rules, list) or not all(
+        isinstance(rule, dict) and isinstance(rule.get("type"), str) for rule in rules
+    ):
+        raise DeclarationError(f"{where}.rules must be a list of rules with a type")
+
+
+def _repositories(value: Any) -> None:
+    for repository, settings in _object(value, "repositories").items():
+        where = f"repositories.{repository}"
+        body = _object(settings, where)
+        _keys(body, {"rulesets"}, where)
+        for name, ruleset in _object(
+            body.get("rulesets", {}), f"{where}.rulesets"
+        ).items():
+            _ruleset(f"{where}.rulesets.{name}", ruleset)
+
+
 def parse(document: Any) -> Declaration:
     root = _object(document, "declaration")
-    _keys(root, {"schema_version", "owner", "packages"}, "declaration")
+    _keys(root, {"schema_version", "owner", "packages", "repositories"}, "declaration")
+    _repositories(root.get("repositories", {}))
     if root.get("schema_version") != SCHEMA_VERSION:
         raise DeclarationError(f"declaration.schema_version must be {SCHEMA_VERSION}")
     owner = root.get("owner")

@@ -10,6 +10,7 @@ from pathlib import Path
 import configuration_browser
 import configuration_declaration
 import configuration_packages
+import configuration_terraform
 from playwright.sync_api import Page
 
 
@@ -62,8 +63,19 @@ def main(arguments: Sequence[str]) -> int:
             print(f"Signed in to GitHub as {account}.")
             return 0
         declaration = configuration_declaration.load(options.declaration)
-        return converge(declaration, write=options.command == "apply")
-    except configuration_declaration.DeclarationError as error:
+        if declaration.packages:
+            converge(declaration, write=options.command == "apply")
+        root = configuration_terraform.owner_root(options.declaration)
+        if root is not None:
+            if options.command == "plan":
+                configuration_terraform.plan(root)
+            else:
+                print(f"API settings in {root} apply when the declaration merges.")
+        return 0
+    except (
+        configuration_declaration.DeclarationError,
+        configuration_terraform.TerraformError,
+    ) as error:
         print(error, file=sys.stderr)
         return 1
     except (
