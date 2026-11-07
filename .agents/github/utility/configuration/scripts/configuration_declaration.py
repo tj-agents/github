@@ -88,11 +88,31 @@ def _ruleset(where: str, value: Any) -> None:
         raise DeclarationError(f"{where}.rules must be a list of rules with a type")
 
 
+def _environment(where: str, value: Any) -> None:
+    body = _object(value, where)
+    _keys(body, {"deployment_branches", "secrets"}, where)
+    branches = body.get("deployment_branches", [])
+    if not isinstance(branches, list) or not all(
+        isinstance(branch, str) and branch for branch in branches
+    ):
+        raise DeclarationError(f"{where}.deployment_branches must list branch patterns")
+    for name, source in _object(body.get("secrets", {}), f"{where}.secrets").items():
+        if not isinstance(source, str) or not source:
+            raise DeclarationError(
+                f"{where}.secrets.{name} must name a workspace secret source, "
+                "never a value"
+            )
+
+
 def _repositories(value: Any) -> None:
     for repository, settings in _object(value, "repositories").items():
         where = f"repositories.{repository}"
         body = _object(settings, where)
-        _keys(body, {"rulesets"}, where)
+        _keys(body, {"rulesets", "environments"}, where)
+        for name, environment in _object(
+            body.get("environments", {}), f"{where}.environments"
+        ).items():
+            _environment(f"{where}.environments.{name}", environment)
         for name, ruleset in _object(
             body.get("rulesets", {}), f"{where}.rulesets"
         ).items():

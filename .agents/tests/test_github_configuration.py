@@ -61,6 +61,12 @@ def test_changes_cover_only_declared_drift() -> None:
             declaration(repositories={"r": {"webhooks": {}}}),
             "repositories.r has unknown fields: webhooks",
         ),
+        (
+            declaration(
+                repositories={"r": {"environments": {"e": {"secrets": {"T": ""}}}}}
+            ),
+            "repositories.r.environments.e.secrets.T must name a workspace secret",
+        ),
         (declaration(packages={"pypi": {}}), "packages.pypi must be one of"),
         (
             declaration(

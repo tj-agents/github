@@ -24,7 +24,14 @@ provider "github" {
   app_auth {}
 }
 
+variable "secret_values" {
+  type      = map(string)
+  sensitive = true
+  default   = {}
+}
+
 module "configuration" {
-  source      = "../.agents/github/utility/configuration/terraform"
-  declaration = local.declaration
+  source        = "../.agents/github/utility/configuration/terraform"
+  declaration   = local.declaration
+  secret_values = var.secret_values
 }
