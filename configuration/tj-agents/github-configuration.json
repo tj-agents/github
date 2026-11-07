@@ -144,6 +144,36 @@
     },
     "agent": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -190,6 +220,36 @@
     },
     "azure": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -262,6 +322,36 @@
     },
     "cli": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -322,6 +412,36 @@
     },
     "core": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -481,6 +601,36 @@
     },
     "dotnet": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -544,6 +694,36 @@
     },
     "github": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -672,6 +852,36 @@
     },
     "nvim": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -735,6 +945,36 @@
     },
     "personal": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -798,6 +1038,36 @@
     },
     "python": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -861,6 +1131,36 @@
     },
     "react": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -924,6 +1224,36 @@
     },
     "rust": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -987,6 +1317,36 @@
     },
     "template": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -1055,6 +1415,36 @@
     },
     "work": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -1118,6 +1508,36 @@
     },
     "work-items": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -1174,6 +1594,40 @@
                   }
                 ]
               }
+            }
+          ]
+        }
+      }
+    },
+    "learning": {
+      "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
             }
           ]
         }
