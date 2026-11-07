@@ -1,5 +1,4 @@
 import os
-import re
 import signal
 import subprocess
 import time
@@ -13,9 +12,6 @@ from playwright.sync_api import Page, sync_playwright
 GITHUB = "https://github.com"
 SIGN_IN_TIMEOUT_SECONDS = 1800
 SIGN_IN_PATHS = (f"{GITHUB}/login", f"{GITHUB}/session")
-SIGN_IN_STEPS = re.compile(
-    r"login|signup|sign-up|signin|verify|auth|select-organization|mfa", re.I
-)
 
 
 class SignInRequiredError(Exception):
@@ -132,14 +128,3 @@ def login() -> str:
                 pass
             page.wait_for_timeout(1000)
     raise SignInRequiredError("Timed out waiting for the GitHub sign-in to finish.")
-
-
-def site_login(url: str) -> str:
-    with browser(headless=False) as page:
-        page.goto(url, wait_until="domcontentloaded")
-        deadline = time.monotonic() + SIGN_IN_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            page.wait_for_timeout(1000)
-            if not SIGN_IN_STEPS.search(page.url):
-                return page.url
-    raise SignInRequiredError(f"Timed out waiting for the sign-in at {url} to finish.")

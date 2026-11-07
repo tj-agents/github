@@ -20,17 +20,12 @@ from playwright.sync_api import Page
 def parse(arguments: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="github_configuration")
     commands = parser.add_subparsers(dest="command", required=True)
-    login = commands.add_parser("login")
-    login.add_argument("--url")
+    commands.add_parser("login")
     for name in ("plan", "apply"):
         command = commands.add_parser(name)
         command.add_argument("--declaration", type=Path, required=True)
     adopt = commands.add_parser("adopt")
     adopt.add_argument("--declaration", type=Path, required=True)
-    store = commands.add_parser("store-secret")
-    store.add_argument("--hcp-organization", required=True)
-    store.add_argument("--workspace", action="append", required=True)
-    store.add_argument("--key", action="append", required=True)
     admin_app = commands.add_parser("admin-app")
     admin_app.add_argument("--owner", required=True)
     admin_app.add_argument("--hcp-organization", required=True)
@@ -76,22 +71,12 @@ def main(arguments: Sequence[str]) -> int:
     options = parse(arguments)
     try:
         if options.command == "login":
-            if options.url:
-                landed = configuration_browser.site_login(options.url)
-                print(f"Signed in; landed on {landed}.")
-                return 0
             account = configuration_browser.login()
             print(f"Signed in to GitHub as {account}.")
             return 0
         if options.command == "adopt":
             adopted = configuration_adopt.adopt(options.declaration)
             print(f"Adopted {len(adopted)} ruleset(s) into {options.declaration}.")
-            return 0
-        if options.command == "store-secret":
-            configuration_app.store_prompted(
-                options.hcp_organization, options.workspace, options.key
-            )
-            print(f"Stored {', '.join(options.key)} in {', '.join(options.workspace)}.")
             return 0
         if options.command == "admin-app":
             app = configuration_app.bootstrap(
