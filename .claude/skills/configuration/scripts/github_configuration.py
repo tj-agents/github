@@ -88,7 +88,7 @@ def main(arguments: Sequence[str]) -> int:
                 options.working_directory,
             )
             print(
-                f"{app.slug} installed as {app.installation_id}; "
+                f"{app.slug} installation {app.installation_id or 'unchanged'}; "
                 f"credentials are in HCP workspace {options.workspace}."
             )
             return 0
