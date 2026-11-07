@@ -3,10 +3,12 @@
 # dependencies = ["playwright==1.64.1"]
 # ///
 import argparse
+import io
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import configuration_adopt
 import configuration_app
 import configuration_browser
 import configuration_declaration
@@ -22,6 +24,8 @@ def parse(arguments: Sequence[str]) -> argparse.Namespace:
     for name in ("plan", "apply"):
         command = commands.add_parser(name)
         command.add_argument("--declaration", type=Path, required=True)
+    adopt = commands.add_parser("adopt")
+    adopt.add_argument("--declaration", type=Path, required=True)
     admin_app = commands.add_parser("admin-app")
     admin_app.add_argument("--owner", required=True)
     admin_app.add_argument("--hcp-organization", required=True)
@@ -69,6 +73,10 @@ def main(arguments: Sequence[str]) -> int:
             account = configuration_browser.login()
             print(f"Signed in to GitHub as {account}.")
             return 0
+        if options.command == "adopt":
+            adopted = configuration_adopt.adopt(options.declaration)
+            print(f"Adopted {len(adopted)} ruleset(s) into {options.declaration}.")
+            return 0
         if options.command == "admin-app":
             app = configuration_app.bootstrap(
                 options.owner,
@@ -108,4 +116,6 @@ def main(arguments: Sequence[str]) -> int:
 
 
 if __name__ == "__main__":
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main(sys.argv[1:]))

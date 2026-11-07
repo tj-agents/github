@@ -236,3 +236,9 @@ def bootstrap(
         {"GITHUB_APP_INSTALLATION_ID": (str(installation), False)},
     )
     return AdminApp(slug, installation)
+
+
+def plan_json(run_id: str) -> Any:
+    run = _hcp("GET", f"/runs/{run_id}")
+    plan_id = run["data"]["relationships"]["plan"]["data"]["id"]
+    return _hcp("GET", f"/plans/{plan_id}/json-output")
