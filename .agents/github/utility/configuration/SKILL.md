@@ -19,7 +19,18 @@ this skill holds no owner data.
 uv run <skill-directory>/scripts/github_configuration.py login
 uv run <skill-directory>/scripts/github_configuration.py plan --declaration <plugin>/github-configuration.json
 uv run <skill-directory>/scripts/github_configuration.py apply --declaration <plugin>/github-configuration.json
+uv run <skill-directory>/scripts/github_configuration.py adopt --declaration <plugin>/github-configuration.json
+uv run <skill-directory>/scripts/github_configuration.py admin-app --owner <owner> --hcp-organization <org> --workspace <workspace>
 ```
+
+`adopt` brings an existing owner under the declaration: it writes `import` blocks for every live repository
+ruleset of its public repositories, plans in HCP, and copies each imported ruleset's actual state, bypass
+actors included, into the declaration so the next plan is change-free. `admin-app` sets up an owner once:
+it creates `<owner>-configuration` from a manifest, or with `--existing-slug` reuses one and generates a
+key only when the workspace has none or `--rotate-key` is given, stores the key in the HCP workspace,
+installs the App on all repositories and records the installation. GitHub has no API for App keys, so
+the signed-in browser drives those pages; the human only confirms access when GitHub asks. New
+repositories in an owner need nothing further.
 
 ```json
 {
