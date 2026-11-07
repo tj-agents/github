@@ -1,6 +1,6 @@
 locals {
   flag_rules = ["creation", "update", "deletion", "non_fast_forward", "required_linear_history", "required_signatures"]
-  rule_types = concat(local.flag_rules, ["pull_request", "required_status_checks"])
+  rule_types = concat(local.flag_rules, ["pull_request", "required_status_checks", "merge_queue"])
 
   rulesets = merge([
     for repository, settings in try(var.declaration.repositories, {}) : {
@@ -54,6 +54,19 @@ resource "github_repository_ruleset" "this" {
         require_code_owner_review         = try(pull_request.value.require_code_owner_review, false)
         require_last_push_approval        = try(pull_request.value.require_last_push_approval, false)
         required_review_thread_resolution = try(pull_request.value.required_review_thread_resolution, false)
+      }
+    }
+
+    dynamic "merge_queue" {
+      for_each = [for rule in each.value.ruleset.rules : rule.parameters if rule.type == "merge_queue"]
+      content {
+        check_response_timeout_minutes    = merge_queue.value.check_response_timeout_minutes
+        grouping_strategy                 = merge_queue.value.grouping_strategy
+        max_entries_to_build              = merge_queue.value.max_entries_to_build
+        max_entries_to_merge              = merge_queue.value.max_entries_to_merge
+        merge_method                      = merge_queue.value.merge_method
+        min_entries_to_merge              = merge_queue.value.min_entries_to_merge
+        min_entries_to_merge_wait_minutes = merge_queue.value.min_entries_to_merge_wait_minutes
       }
     }
 

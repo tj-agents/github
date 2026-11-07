@@ -8,6 +8,15 @@ import configuration_app
 import configuration_terraform
 
 RESOURCE = "module.configuration.github_repository_ruleset.this"
+MERGE_QUEUE = (
+    "check_response_timeout_minutes",
+    "grouping_strategy",
+    "max_entries_to_build",
+    "max_entries_to_merge",
+    "merge_method",
+    "min_entries_to_merge",
+    "min_entries_to_merge_wait_minutes",
+)
 FLAGS = (
     "creation",
     "update",
@@ -37,8 +46,22 @@ def live_rulesets(owner: str) -> dict[str, int]:
     return found
 
 
+class AdoptError(Exception):
+    pass
+
+
 def native(state: dict[str, Any]) -> dict[str, Any]:
     rules_state = state["rules"][0]
+    carried = {*FLAGS, "pull_request", "required_status_checks", "merge_queue"}
+    lost = sorted(
+        key
+        for key, value in rules_state.items()
+        if key not in carried and value not in (None, False, [], 0, "")
+    )
+    if lost:
+        raise AdoptError(
+            f"Ruleset uses rules this module cannot carry: {', '.join(lost)}"
+        )
     rules: list[dict[str, Any]] = [
         {"type": flag} for flag in FLAGS if rules_state.get(flag)
     ]
@@ -56,6 +79,13 @@ def native(state: dict[str, Any]) -> dict[str, Any]:
                         "required_review_thread_resolution",
                     )
                 },
+            }
+        )
+    for queue in rules_state.get("merge_queue") or []:
+        rules.append(
+            {
+                "type": "merge_queue",
+                "parameters": {key: queue[key] for key in MERGE_QUEUE},
             }
         )
     for checks in rules_state.get("required_status_checks") or []:

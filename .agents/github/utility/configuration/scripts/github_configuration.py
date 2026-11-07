@@ -103,6 +103,7 @@ def main(arguments: Sequence[str]) -> int:
                 print(f"API settings in {root} apply when the declaration merges.")
         return 0
     except (
+        configuration_adopt.AdoptError,
         configuration_declaration.DeclarationError,
         configuration_terraform.TerraformError,
     ) as error:
