@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import configuration_app
 import configuration_browser
 import configuration_declaration
 import configuration_packages
@@ -21,6 +22,12 @@ def parse(arguments: Sequence[str]) -> argparse.Namespace:
     for name in ("plan", "apply"):
         command = commands.add_parser(name)
         command.add_argument("--declaration", type=Path, required=True)
+    admin_app = commands.add_parser("admin-app")
+    admin_app.add_argument("--owner", required=True)
+    admin_app.add_argument("--hcp-organization", required=True)
+    admin_app.add_argument("--workspace", required=True)
+    admin_app.add_argument("--existing-slug")
+    admin_app.add_argument("--rotate-key", action="store_true")
     return parser.parse_args(arguments)
 
 
@@ -62,6 +69,19 @@ def main(arguments: Sequence[str]) -> int:
             account = configuration_browser.login()
             print(f"Signed in to GitHub as {account}.")
             return 0
+        if options.command == "admin-app":
+            app = configuration_app.bootstrap(
+                options.owner,
+                options.hcp_organization,
+                options.workspace,
+                options.existing_slug,
+                options.rotate_key,
+            )
+            print(
+                f"{app.slug} installed as {app.installation_id}; "
+                f"credentials are in HCP workspace {options.workspace}."
+            )
+            return 0
         declaration = configuration_declaration.load(options.declaration)
         if declaration.packages:
             converge(declaration, write=options.command == "apply")
@@ -79,6 +99,7 @@ def main(arguments: Sequence[str]) -> int:
         print(error, file=sys.stderr)
         return 1
     except (
+        configuration_app.AppSetupError,
         configuration_browser.SignInRequiredError,
         configuration_packages.PackageAccessError,
     ) as stop:
