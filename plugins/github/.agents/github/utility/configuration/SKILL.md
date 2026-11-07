@@ -5,7 +5,7 @@ kind: utility
 domain: github
 profile: core
 applicability: explicitly requested GitHub settings changes
-requires: uv, Google Chrome, Terraform, HCP Terraform
+requires: uv, Google Chrome, Terraform, HCP Terraform, Infisical
 provenance: house
 ---
 
@@ -67,6 +67,18 @@ mapping each secret name to a source the workspace's sensitive `secret_values` s
       }
     }
   }
+}
+```
+
+Secret values live only in Infisical. `secrets` names the owner's Infisical project and GitHub App connection;
+each sync pushes one Infisical folder to the owner's organization (only the listed `repositories`), one
+`repository` or one `repository_environment`. Syncs never delete GitHub secrets, and agents never see values.
+
+```json
+"secrets": {
+  "project": "github-tj-agents",
+  "connection": "<infisical github connection id>",
+  "syncs": { "shared": { "scope": "organization", "path": "/shared", "repositories": ["github-actions"] } }
 }
 ```
 
