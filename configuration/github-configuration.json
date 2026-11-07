@@ -532,6 +532,16 @@
             }
           ]
         }
+      },
+      "environments": {
+        "configuration": {
+          "deployment_branches": [
+            "main"
+          ],
+          "secrets": {
+            "TF_API_TOKEN": "hcp_api_token"
+          }
+        }
       }
     },
     "marketplace": {
