@@ -1,6 +1,7 @@
 from typing import Any
 
 import pytest
+from configuration_adopt import AdoptError, native
 from configuration_declaration import (
     DeclarationError,
     Package,
@@ -82,3 +83,42 @@ def test_changes_cover_only_declared_drift() -> None:
 def test_rejects_invalid_declarations(document: dict[str, Any], message: str) -> None:
     with pytest.raises(DeclarationError, match=message):
         parse(document)
+
+
+def ruleset_state(**rules: Any) -> dict[str, Any]:
+    return {
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": [{"ref_name": [{"include": ["~DEFAULT_BRANCH"], "exclude": []}]}],
+        "bypass_actors": [
+            {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+        ],
+        "rules": [rules],
+    }
+
+
+def test_adopt_carries_merge_queue_and_flags() -> None:
+    queue = {
+        "check_response_timeout_minutes": 60,
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "merge_method": "MERGE",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5,
+    }
+
+    adopted = native(ruleset_state(deletion=True, merge_queue=[queue]))
+
+    assert adopted["rules"] == [
+        {"type": "deletion"},
+        {"type": "merge_queue", "parameters": queue},
+    ]
+    assert adopted["bypass_actors"] == [
+        {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+    ]
+
+
+def test_adopt_refuses_rules_it_cannot_carry() -> None:
+    with pytest.raises(AdoptError, match="tag_name_pattern"):
+        native(ruleset_state(tag_name_pattern=[{"pattern": "v*"}]))
