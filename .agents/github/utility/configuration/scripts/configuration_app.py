@@ -34,7 +34,7 @@ class AppSetupError(Exception):
 @dataclass(frozen=True)
 class AdminApp:
     slug: str
-    installation_id: int
+    installation_id: int | None
 
 
 def _json(request: urllib.request.Request) -> Any:
@@ -207,25 +207,58 @@ def _pem_variable(pem: str) -> tuple[str, bool]:
     return pem.strip().replace("\n", "\\n"), True
 
 
-def _new_key(page: Page, owner: str, slug: str) -> str:
+def _settings(owner: str, slug: str) -> str:
     scope = f"organizations/{owner}/" if _is_organization(owner) else ""
-    page.goto(
-        f"{GITHUB}/{scope}settings/apps/{slug}/key_pairs",
-        wait_until="domcontentloaded",
-    )
+    return f"{GITHUB}/{scope}settings/apps/{slug}"
+
+
+def _key_forms(page: Page) -> list[str]:
+    forms = page.locator("form").filter(has=page.locator("button.btn-danger.btn-block"))
+    return [form.get_attribute("action") or "" for form in forms.all()]
+
+
+def _new_key(page: Page, owner: str, slug: str) -> tuple[str, list[str]]:
+    page.goto(f"{_settings(owner, slug)}/key_pairs", wait_until="domcontentloaded")
     print(
-        "In the opened window: confirm access if GitHub asks; the key is then "
-        "generated automatically.",
+        "In the opened window: confirm access if GitHub asks; the rest is automatic.",
         flush=True,
     )
     generate = page.locator("button.js-generate-integration-key")
     generate.wait_for(state="visible", timeout=HUMAN_TIMEOUT_MS)
+    previous = _key_forms(page)
     with page.expect_download(timeout=120_000) as pending:
         generate.click()
     download = pending.value
     pem = Path(download.path()).read_text(encoding="utf-8")
     download.delete()
-    return pem
+    return pem, previous
+
+
+def _delete_keys(page: Page, owner: str, slug: str, actions: list[str]) -> None:
+    for action in actions:
+        page.goto(f"{_settings(owner, slug)}/key_pairs", wait_until="domcontentloaded")
+        form = page.locator(f'form[action="{action}"]')
+        if form.count() == 0:
+            continue
+        form.locator("xpath=ancestor::details[1]/summary").click()
+        form.locator("button.btn-danger.btn-block").click()
+        page.wait_for_load_state("domcontentloaded")
+        form.wait_for(state="detached", timeout=60_000)
+    page.goto(f"{_settings(owner, slug)}/key_pairs", wait_until="domcontentloaded")
+    remaining = set(_key_forms(page)) & set(actions)
+    if remaining:
+        raise AppSetupError(f"Old private keys remain on {slug}")
+
+
+def _ensure_name(page: Page, owner: str, slug: str) -> None:
+    page.goto(_settings(owner, slug), wait_until="domcontentloaded")
+    name = page.get_by_label("GitHub App name")
+    name.wait_for(timeout=HUMAN_TIMEOUT_MS)
+    if name.input_value() == slug:
+        return
+    name.fill(slug)
+    with page.expect_navigation(wait_until="domcontentloaded"):
+        page.get_by_role("button", name="Save changes").first.click()
 
 
 def bootstrap(
@@ -237,29 +270,37 @@ def bootstrap(
     working_directory: str,
 ) -> AdminApp:
     ensure_workspace(organization, workspace, working_directory)
+    stored = _variables(organization, workspace)[1]
+    installation: int | None = None
     with browser(headless=False) as page:
-        pem: str | None = None
         if existing_slug is None:
-            created = _create(page, owner, f"{owner}-configuration")
-            slug, pem = str(created["slug"]), str(created["pem"])
+            created = _create(page, owner, f"{owner.lower()}-configuration")
+            slug = str(created["slug"])
             _set_variables(
-                organization, workspace, {"GITHUB_APP_ID": (str(created["id"]), False)}
+                organization,
+                workspace,
+                {
+                    "GITHUB_APP_ID": (str(created["id"]), False),
+                    "GITHUB_APP_PEM_FILE": _pem_variable(str(created["pem"])),
+                },
             )
         else:
             slug = existing_slug
-            stored = "GITHUB_APP_PEM_FILE" in _variables(organization, workspace)[1]
-            if rotate_key or not stored:
-                pem = _new_key(page, owner, slug)
-        if pem is not None:
-            _set_variables(
-                organization, workspace, {"GITHUB_APP_PEM_FILE": _pem_variable(pem)}
-            )
-        installation = _install(page, slug)
-    _set_variables(
-        organization,
-        workspace,
-        {"GITHUB_APP_INSTALLATION_ID": (str(installation), False)},
-    )
+            if rotate_key or "GITHUB_APP_PEM_FILE" not in stored:
+                pem, previous = _new_key(page, owner, slug)
+                _set_variables(
+                    organization, workspace, {"GITHUB_APP_PEM_FILE": _pem_variable(pem)}
+                )
+                _delete_keys(page, owner, slug, previous)
+        _ensure_name(page, owner, slug)
+        if existing_slug is None or "GITHUB_APP_INSTALLATION_ID" not in stored:
+            installation = _install(page, slug)
+    if installation is not None:
+        _set_variables(
+            organization,
+            workspace,
+            {"GITHUB_APP_INSTALLATION_ID": (str(installation), False)},
+        )
     return AdminApp(slug, installation)
 
 
