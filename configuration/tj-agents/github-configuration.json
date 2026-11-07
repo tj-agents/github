@@ -134,9 +134,6 @@
                   },
                   {
                     "context": "verify / verify (windows-latest)"
-                  },
-                  {
-                    "context": "Renovate acceptance"
                   }
                 ]
               }
