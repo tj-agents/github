@@ -104,6 +104,36 @@ def _environment(where: str, value: Any) -> None:
             )
 
 
+SYNC_SCOPES = {"organization", "repository", "repository-environment"}
+
+
+def _secrets(value: Any) -> None:
+    body = _object(value, "secrets")
+    _keys(body, {"project", "connection", "syncs"}, "secrets")
+    for key in ("project", "connection"):
+        if not isinstance(body.get(key), str) or not body[key]:
+            raise DeclarationError(f"secrets.{key} must be a nonempty string")
+    for name, sync in _object(body.get("syncs", {}), "secrets.syncs").items():
+        where = f"secrets.syncs.{name}"
+        entry = _object(sync, where)
+        _keys(
+            entry,
+            {
+                "scope",
+                "path",
+                "environment",
+                "repository",
+                "repository_environment",
+                "repositories",
+            },
+            where,
+        )
+        if entry.get("scope") not in SYNC_SCOPES:
+            raise DeclarationError(
+                f"{where}.scope must be one of: {', '.join(sorted(SYNC_SCOPES))}"
+            )
+
+
 def _repositories(value: Any) -> None:
     for repository, settings in _object(value, "repositories").items():
         where = f"repositories.{repository}"
@@ -121,8 +151,14 @@ def _repositories(value: Any) -> None:
 
 def parse(document: Any) -> Declaration:
     root = _object(document, "declaration")
-    _keys(root, {"schema_version", "owner", "packages", "repositories"}, "declaration")
+    _keys(
+        root,
+        {"schema_version", "owner", "packages", "repositories", "secrets"},
+        "declaration",
+    )
     _repositories(root.get("repositories", {}))
+    if "secrets" in root:
+        _secrets(root["secrets"])
     if root.get("schema_version") != SCHEMA_VERSION:
         raise DeclarationError(f"declaration.schema_version must be {SCHEMA_VERSION}")
     owner = root.get("owner")

@@ -52,15 +52,21 @@ def _command_lines() -> list[tuple[int, str]]:
     return processes
 
 
-def _release(profile: Path) -> None:
+def _profile_processes(profile: Path) -> list[int]:
     marker = str(profile).lower()
-    for pid, command in _command_lines():
-        if marker in command.lower():
+    return [pid for pid, command in _command_lines() if marker in command.lower()]
+
+
+def _release(profile: Path) -> None:
+    deadline = time.monotonic() + 15
+    while (holders := _profile_processes(profile)) and time.monotonic() < deadline:
+        for pid in holders:
             with suppress(OSError):
                 os.kill(pid, signal.SIGTERM)
-    time.sleep(1)
-    for lock in profile.glob("Singleton*"):
-        lock.unlink(missing_ok=True)
+        time.sleep(1)
+    for lock in [*profile.glob("Singleton*"), profile / "lockfile"]:
+        with suppress(OSError):
+            lock.unlink(missing_ok=True)
 
 
 def signed_in_login(page: Page) -> str:

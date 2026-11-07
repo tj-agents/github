@@ -128,3 +128,10 @@ def test_adopt_carries_merge_queue_and_flags() -> None:
 def test_adopt_refuses_rules_it_cannot_carry() -> None:
     with pytest.raises(AdoptError, match="tag_name_pattern"):
         native(ruleset_state(tag_name_pattern=[{"pattern": "v*"}]))
+
+
+def test_secret_syncs_need_a_known_scope() -> None:
+    secrets = {"project": "p", "connection": "c", "syncs": {"s": {"scope": "team"}}}
+
+    with pytest.raises(DeclarationError, match=r"secrets.syncs.s.scope must be one of"):
+        parse(declaration(secrets=secrets))
