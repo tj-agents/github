@@ -1,3 +1,4 @@
+import getpass
 import html
 import json
 import os
@@ -308,3 +309,15 @@ def plan_json(run_id: str) -> Any:
     run = _hcp("GET", f"/runs/{run_id}")
     plan_id = run["data"]["relationships"]["plan"]["data"]["id"]
     return _hcp("GET", f"/plans/{plan_id}/json-output")
+
+
+def store_prompted(organization: str, workspaces: list[str], keys: list[str]) -> None:
+    values = {key: getpass.getpass(f"{key}: ") for key in keys}
+    if not all(values.values()):
+        raise AppSetupError("Every value is required; nothing was stored.")
+    for workspace in workspaces:
+        _set_variables(
+            organization,
+            workspace,
+            {key: (value, True) for key, value in values.items()},
+        )

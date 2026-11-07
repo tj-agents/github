@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 import subprocess
 import time
@@ -12,6 +13,9 @@ from playwright.sync_api import Page, sync_playwright
 GITHUB = "https://github.com"
 SIGN_IN_TIMEOUT_SECONDS = 1800
 SIGN_IN_PATHS = (f"{GITHUB}/login", f"{GITHUB}/session")
+SIGN_IN_STEPS = re.compile(
+    r"login|signup|sign-up|signin|verify|auth|select-organization|mfa", re.I
+)
 
 
 class SignInRequiredError(Exception):
@@ -52,15 +56,21 @@ def _command_lines() -> list[tuple[int, str]]:
     return processes
 
 
-def _release(profile: Path) -> None:
+def _profile_processes(profile: Path) -> list[int]:
     marker = str(profile).lower()
-    for pid, command in _command_lines():
-        if marker in command.lower():
+    return [pid for pid, command in _command_lines() if marker in command.lower()]
+
+
+def _release(profile: Path) -> None:
+    deadline = time.monotonic() + 15
+    while (holders := _profile_processes(profile)) and time.monotonic() < deadline:
+        for pid in holders:
             with suppress(OSError):
                 os.kill(pid, signal.SIGTERM)
-    time.sleep(1)
-    for lock in profile.glob("Singleton*"):
-        lock.unlink(missing_ok=True)
+        time.sleep(1)
+    for lock in [*profile.glob("Singleton*"), profile / "lockfile"]:
+        with suppress(OSError):
+            lock.unlink(missing_ok=True)
 
 
 def signed_in_login(page: Page) -> str:
@@ -122,3 +132,14 @@ def login() -> str:
                 pass
             page.wait_for_timeout(1000)
     raise SignInRequiredError("Timed out waiting for the GitHub sign-in to finish.")
+
+
+def site_login(url: str) -> str:
+    with browser(headless=False) as page:
+        page.goto(url, wait_until="domcontentloaded")
+        deadline = time.monotonic() + SIGN_IN_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            page.wait_for_timeout(1000)
+            if not SIGN_IN_STEPS.search(page.url):
+                return page.url
+    raise SignInRequiredError(f"Timed out waiting for the sign-in at {url} to finish.")
