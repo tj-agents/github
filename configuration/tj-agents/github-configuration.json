@@ -1108,5 +1108,10 @@
         }
       }
     }
+  },
+  "secrets": {
+    "project": "github-tj-agents",
+    "connection": "7447d301-2db0-415a-992c-62219ef4517b",
+    "syncs": {}
   }
 }

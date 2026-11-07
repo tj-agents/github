@@ -14,6 +14,7 @@
     "github-actions@tj-agents",
     "personal@tj-agents",
     "python@tj-agents",
+    "skill@tj-agents",
     "template@tj-agents",
     "workflow@tj-agents"
   ]
