@@ -4,6 +4,10 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.13"
     }
+    infisical = {
+      source  = "Infisical/infisical"
+      version = "~> 0.20"
+    }
   }
 
   cloud {
@@ -18,6 +22,8 @@ terraform {
 locals {
   declaration = jsondecode(file("${path.module}/github-configuration.json"))
 }
+
+provider "infisical" {}
 
 provider "github" {
   owner = local.declaration.owner

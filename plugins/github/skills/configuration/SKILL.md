@@ -5,7 +5,7 @@ kind: utility
 domain: github
 profile: core
 applicability: explicitly requested GitHub settings changes
-requires: uv, Google Chrome, Terraform, HCP Terraform
+requires: uv, Google Chrome, Terraform, HCP Terraform, Infisical
 provenance: house
 ---
 
