@@ -6,5 +6,9 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.13"
     }
+    infisical = {
+      source  = "Infisical/infisical"
+      version = "~> 0.20"
+    }
   }
 }

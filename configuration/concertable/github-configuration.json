@@ -972,5 +972,10 @@
         }
       }
     }
+  },
+  "secrets": {
+    "project": "github-concertable",
+    "connection": "e97c9296-9e4a-4466-86ef-fc5ec7da9d5d",
+    "syncs": {}
   }
 }
