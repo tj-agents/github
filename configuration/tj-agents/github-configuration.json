@@ -108,7 +108,7 @@
             {
               "type": "pull_request",
               "parameters": {
-                "required_approving_review_count": 1,
+                "required_approving_review_count": 0,
                 "dismiss_stale_reviews_on_push": false,
                 "require_code_owner_review": false,
                 "require_last_push_approval": false,
@@ -118,7 +118,7 @@
             {
               "type": "required_status_checks",
               "parameters": {
-                "strict_required_status_checks_policy": false,
+                "strict_required_status_checks_policy": true,
                 "required_status_checks": [
                   {
                     "context": "Verify the portable workflow writer (ubuntu-latest)"
@@ -134,6 +134,9 @@
                   },
                   {
                     "context": "verify / verify (windows-latest)"
+                  },
+                  {
+                    "context": "Renovate acceptance"
                   }
                 ]
               }
