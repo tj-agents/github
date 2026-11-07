@@ -1,0 +1,976 @@
+{
+  "schema_version": 1,
+  "owner": "Concertable",
+  "packages": {
+    "nuget": {
+      "Concertable.AppHost.Shared": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Build": {
+        "actions_access": {
+          "platform-dotnet": "admin"
+        }
+      },
+      "Concertable.Contracts": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.DataAccess.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.DataAccess.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Frontend.Hosting": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Grpc": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Kernel": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Messaging.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Messaging.AspNetCore": {
+        "actions_access": {
+          "platform-dotnet": "admin"
+        }
+      },
+      "Concertable.Messaging.AzureServiceBus": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Messaging.Contracts": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Messaging.Domain": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Messaging.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Seed.Identity": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Seed.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Seed.Shared": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.ServiceDefaults": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Api": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Blob.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Blob.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Email.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Email.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Geocoding.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Geocoding.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Imaging.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Imaging.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Notification.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Pdf.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.Pdf.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.QrCode.Application": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Shared.QrCode.Infrastructure": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Testing": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Testing.Architecture": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Testing.Integration": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Testing.Unit": {
+        "actions_access": {
+          "platform-dotnet": "write"
+        }
+      }
+    }
+  },
+  "repositories": {
+    "auth": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "b2b": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "customer": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "payment": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "pipeline": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "platform-dotnet": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "main": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/main"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [],
+          "rules": [
+            {
+              "type": "deletion"
+            },
+            {
+              "type": "non_fast_forward"
+            }
+          ]
+        }
+      }
+    },
+    "platform-frontend": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "search": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "system": {
+      "rulesets": {
+        "Immutable release tags": {
+          "target": "tag",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/tags/v*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
+        "Main merge queue": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": true,
+                "require_code_owner_review": false,
+                "require_last_push_approval": true,
+                "required_review_thread_resolution": true
+              }
+            },
+            {
+              "type": "merge_queue",
+              "parameters": {
+                "check_response_timeout_minutes": 60,
+                "grouping_strategy": "ALLGREEN",
+                "max_entries_to_build": 5,
+                "max_entries_to_merge": 5,
+                "merge_method": "MERGE",
+                "min_entries_to_merge": 1,
+                "min_entries_to_merge_wait_minutes": 5
+              }
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-complete"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

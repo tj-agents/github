@@ -12,14 +12,14 @@ provenance: house
 # GitHub configuration
 
 Run the shipped entry point with `uv`, which installs its pinned Playwright. Resolve its path relative to
-this installed skill. A codebase's declaration lives in that codebase's own plugin and is passed by path;
-this skill holds no owner data.
+this installed skill. Owner declarations live centrally in tj-agents/github under `configuration/<owner>/`,
+each beside its Terraform root, and are passed by path; this skill holds no owner data.
 
 ```text
 uv run <skill-directory>/scripts/github_configuration.py login
-uv run <skill-directory>/scripts/github_configuration.py plan --declaration <plugin>/github-configuration.json
-uv run <skill-directory>/scripts/github_configuration.py apply --declaration <plugin>/github-configuration.json
-uv run <skill-directory>/scripts/github_configuration.py adopt --declaration <plugin>/github-configuration.json
+uv run <skill-directory>/scripts/github_configuration.py plan --declaration configuration/<owner>/github-configuration.json
+uv run <skill-directory>/scripts/github_configuration.py apply --declaration configuration/<owner>/github-configuration.json
+uv run <skill-directory>/scripts/github_configuration.py adopt --declaration configuration/<owner>/github-configuration.json
 uv run <skill-directory>/scripts/github_configuration.py admin-app --owner <owner> --hcp-organization <org> --workspace <workspace>
 ```
 
@@ -49,8 +49,10 @@ Settings with an API live under `repositories` as native GitHub data and converg
 `integrations/github` provider. Each owner keeps a small root beside its declaration: a `main.tf` with an
 HCP Terraform `cloud` block, `provider "github" { app_auth {} }` and this skill's `terraform` module given
 `jsondecode(file("github-configuration.json"))`, plus `import` blocks for settings that already exist. The
-HCP workspace holds the state lock and the administrative App credential, plans pull requests and applies
-on merge; agents never hold that credential.
+HCP workspace holds the state lock and the administrative App credential. The `configuration` workflow applies
+every owner root on merge to main from a `configuration` environment limited to main, which holds the HCP
+token; agents never hold the App credential. Environments declare `deployment_branches` and `secrets`
+mapping each secret name to a source the workspace's sensitive `secret_values` supplies, never a value.
 
 ```json
 "repositories": {

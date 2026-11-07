@@ -31,7 +31,7 @@ variable "secret_values" {
 }
 
 module "configuration" {
-  source        = "../.agents/github/utility/configuration/terraform"
+  source        = "../../.agents/github/utility/configuration/terraform"
   declaration   = local.declaration
   secret_values = var.secret_values
 }
