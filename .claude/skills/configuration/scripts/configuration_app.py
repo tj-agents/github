@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from configuration_browser import GITHUB, browser
-from playwright.sync_api import Page, Route
+from playwright.sync_api import Page
 
 CALLBACK = "http://127.0.0.1:47391/github-configuration"
 HUMAN_TIMEOUT_MS = 30 * 60 * 1000
@@ -47,18 +47,6 @@ def _is_organization(owner: str) -> bool:
     return bool(user["type"] == "Organization")
 
 
-def _await_callback(page: Page, key: str) -> dict[str, list[str]]:
-    def answer(route: Route) -> None:
-        route.fulfill(body="Done. Return to the terminal.", content_type="text/plain")
-
-    page.route(f"{CALLBACK}*", answer)
-    page.wait_for_url(f"{CALLBACK}*", timeout=HUMAN_TIMEOUT_MS)
-    query = parse_qs(urlparse(page.url).query)
-    if key not in query:
-        raise AppSetupError(f"GitHub returned without {key}")
-    return query
-
-
 def _create(page: Page, owner: str, name: str) -> dict[str, Any]:
     state = secrets.token_urlsafe(16)
     manifest = {
@@ -78,11 +66,22 @@ def _create(page: Page, owner: str, name: str) -> dict[str, Any]:
         f'<input type="hidden" name="manifest" value="{value}">'
         "</form><script>document.forms[0].submit()</script>"
     )
+    page.route(
+        f"{CALLBACK}*",
+        lambda route: route.fulfill(body="Created.", content_type="text/plain"),
+    )
     print(
-        "In the opened window: confirm access if asked, then Create GitHub App.",
+        "In the opened window: confirm access if GitHub asks; the App is then "
+        "created automatically.",
         flush=True,
     )
-    query = _await_callback(page, "code")
+    page.get_by_role("button", name=re.compile(r"^\s*Create GitHub App")).first.click(
+        timeout=HUMAN_TIMEOUT_MS
+    )
+    page.wait_for_url(f"{CALLBACK}*", timeout=120_000)
+    query = parse_qs(urlparse(page.url).query)
+    if "code" not in query:
+        raise AppSetupError("GitHub returned without a manifest code")
     if query.get("state") != [state]:
         raise AppSetupError("GitHub returned a different manifest state")
     conversion = urllib.request.Request(
