@@ -4,6 +4,36 @@
   "repositories": {
     "github-actions": {
       "rulesets": {
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
