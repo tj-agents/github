@@ -7,4 +7,4 @@
 .codex/
 plugins/
 uv.lock
-configuration/.terraform/
+configuration/*/.terraform/
