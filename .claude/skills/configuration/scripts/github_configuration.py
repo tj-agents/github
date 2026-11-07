@@ -32,6 +32,7 @@ def parse(arguments: Sequence[str]) -> argparse.Namespace:
     admin_app.add_argument("--workspace", required=True)
     admin_app.add_argument("--existing-slug")
     admin_app.add_argument("--rotate-key", action="store_true")
+    admin_app.add_argument("--working-directory", default="configuration")
     return parser.parse_args(arguments)
 
 
@@ -84,6 +85,7 @@ def main(arguments: Sequence[str]) -> int:
                 options.workspace,
                 options.existing_slug,
                 options.rotate_key,
+                options.working_directory,
             )
             print(
                 f"{app.slug} installed as {app.installation_id}; "

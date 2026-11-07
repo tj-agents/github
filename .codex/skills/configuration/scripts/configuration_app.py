@@ -138,6 +138,30 @@ def _hcp(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
     return _json(request)
 
 
+def ensure_workspace(organization: str, workspace: str, working_directory: str) -> None:
+    names = {
+        item["attributes"]["name"]
+        for item in _hcp("GET", f"/organizations/{organization}/workspaces")["data"]
+    }
+    if workspace in names:
+        return
+    _hcp(
+        "POST",
+        f"/organizations/{organization}/workspaces",
+        {
+            "data": {
+                "type": "workspaces",
+                "attributes": {
+                    "name": workspace,
+                    "execution-mode": "remote",
+                    "working-directory": working_directory,
+                    "auto-apply": False,
+                },
+            }
+        },
+    )
+
+
 def _variables(organization: str, workspace: str) -> tuple[str, dict[str, str]]:
     workspace_id = _hcp("GET", f"/organizations/{organization}/workspaces/{workspace}")[
         "data"
@@ -211,7 +235,9 @@ def bootstrap(
     workspace: str,
     existing_slug: str | None,
     rotate_key: bool,
+    working_directory: str,
 ) -> AdminApp:
+    ensure_workspace(organization, workspace, working_directory)
     with browser(headless=False) as page:
         pem: str | None = None
         if existing_slug is None:
