@@ -365,6 +365,17 @@ class Binding:
             )
         return profile
 
+    def tracks(self, path: Path) -> bool:
+        return bool(
+            _git(
+                self.git,
+                self.root,
+                "ls-files",
+                "--",
+                path.relative_to(self.root).as_posix(),
+            )
+        )
+
     def activation_settings(self, base: Mapping[str, str]) -> dict[str, str]:
         path = next((value for key, value in base.items() if key.upper() == "PATH"), "")
         environment = {
