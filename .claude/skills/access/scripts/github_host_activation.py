@@ -229,6 +229,10 @@ def activate(
         if host == NativeHost.CLAUDE
         else ".codex/config.toml"
     )
+    if binding.tracks(settings):
+        raise AccessError(
+            "host-settings-tracked: keep the selected settings file untracked"
+        )
     if host == NativeHost.CLAUDE and base.get("CLAUDE_CONFIG_DIR"):
         raise AccessError(
             "host-profile-unsupported: use the native default Claude profile"
