@@ -1191,6 +1191,72 @@
     },
     "marketplace": {
       "rulesets": {
+        "merge-policy-review": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "~DEFAULT_BRANCH"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "pull_request"
+            },
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "pull_request"
+            }
+          ],
+          "rules": [
+            {
+              "type": "pull_request",
+              "parameters": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews_on_push": false,
+                "require_code_owner_review": false,
+                "require_last_push_approval": false,
+                "required_review_thread_resolution": false
+              }
+            }
+          ]
+        },
+        "renovate-branches": {
+          "target": "branch",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "include": [
+                "refs/heads/renovate/**/*"
+              ],
+              "exclude": []
+            }
+          },
+          "bypass_actors": [
+            {
+              "actor_id": 2740,
+              "actor_type": "Integration",
+              "bypass_mode": "always"
+            }
+          ],
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ]
+        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -1219,7 +1285,7 @@
             {
               "type": "pull_request",
               "parameters": {
-                "required_approving_review_count": 1,
+                "required_approving_review_count": 0,
                 "dismiss_stale_reviews_on_push": false,
                 "require_code_owner_review": false,
                 "require_last_push_approval": false,
