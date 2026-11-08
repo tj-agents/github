@@ -17,5 +17,6 @@
     "category": "Productivity",
     "capabilities": [],
     "defaultPrompt": "Show me what github can do."
-  }
+  },
+  "version": "6db252e69741"
 }
