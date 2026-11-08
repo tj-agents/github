@@ -228,6 +228,36 @@ def test_activation_scope_exit_precedes_settings_and_native_operations(
     assert not (selected.root / ".codex/config.toml").exists()
 
 
+@pytest.mark.parametrize(
+    ("host", "relative"),
+    [
+        (github_hosts.NativeHost.CODEX, ".codex/config.toml"),
+        (github_hosts.NativeHost.CLAUDE, ".claude/settings.local.json"),
+    ],
+)
+def test_activation_refuses_a_tracked_settings_file(
+    selected: github_binding.Binding,
+    host: github_hosts.NativeHost,
+    relative: str,
+) -> None:
+    path = selected.root / relative
+    path.parent.mkdir()
+    path.write_text("{}" if path.suffix == ".json" else "", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(selected.root), "add", "--force", relative], check=True
+    )
+    before = path.read_bytes()
+    with pytest.raises(access_core.AccessError, match="host-settings-tracked"):
+        github_host_activation.activate(
+            selected,
+            github_platform.current_platform(),
+            host,
+            os.environ,
+            executable=Path(sys.executable),
+        )
+    assert path.read_bytes() == before
+
+
 def test_claude_ownership_change_after_receipt_preserves_registration(
     selected: github_binding.Binding,
     monkeypatch: pytest.MonkeyPatch,
