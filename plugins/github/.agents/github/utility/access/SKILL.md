@@ -78,7 +78,8 @@ an account-wide login. The token exists only in the authorized child environment
 Run setup, activate each selected native host, then onboard from the exact selected checkout. These
 steps are part of the authorized access task. Resolve the actual native Claude executable through
 Agent's existing host resolver and pass its absolute path; shell functions are not executables.
-Activation merges public environment into project settings and registers the MCP command. Claude's
+Activation merges public environment into the checkout's untracked settings file, refusing a tracked
+one, and registers the MCP command. Claude's
 native CLI owns its local MCP registration; an unrelated `employer_github` registration is a conflict.
 Custom `CLAUDE_CONFIG_DIR` is currently unsupported and fails before mutation.
 
