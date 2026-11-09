@@ -1,7 +1,10 @@
 # GitHub
 
 Deterministic GitHub collaboration utilities for agent workflows, usable by personal and work
-projects. Project policy and user authorization remain with the caller.
+projects. Project policy and user authorization remain with the caller. It's one of TJ Agents'
+plugin families — Tommy's agentic engineering standards and tooling for Claude Code and Codex,
+with harness parity: both hosts load the same generated skills. A repository selects it by adding
+`github@tj-agents` to `.agents/plugins.json` against the `tj-agents/marketplace` marketplace.
 
 The first utility, `github:collaboration`, reads compact issue/PR context, posts top-level
 comments, submits reviews with inline batches, and replies to review threads. It uses the
