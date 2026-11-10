@@ -1,4 +1,5 @@
 import os
+import re
 import signal
 import subprocess
 import time
@@ -53,8 +54,24 @@ def _command_lines() -> list[tuple[int, str]]:
 
 
 def _profile_processes(profile: Path) -> list[int]:
-    marker = str(profile).lower()
-    return [pid for pid, command in _command_lines() if marker in command.lower()]
+    marker = str(profile).replace("\\", "/").rstrip("/")
+    argument = re.compile(
+        r'(?:^|\s)(?:"--user-data-dir(?:=|\s+)([^"]+)"|'
+        r'--user-data-dir(?:=|\s+)(?:"([^"]+)"|(\S+)))(?=\s|$)'
+    )
+    processes = []
+    for pid, command in _command_lines():
+        for match in argument.finditer(command):
+            value = next(value for value in match.groups() if value is not None)
+            value = value.replace("\\", "/").rstrip("/")
+            if os.name == "nt":
+                value, expected = value.casefold(), marker.casefold()
+            else:
+                expected = marker
+            if value == expected:
+                processes.append(pid)
+                break
+    return processes
 
 
 def _release(profile: Path) -> None:
