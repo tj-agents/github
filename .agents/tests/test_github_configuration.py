@@ -1,5 +1,8 @@
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+import configuration_browser
 import pytest
 from configuration_adopt import AdoptError, native
 from configuration_declaration import (
@@ -10,6 +13,34 @@ from configuration_declaration import (
     parse,
 )
 from configuration_packages import Change, changes
+
+
+@pytest.mark.parametrize(
+    ("command", "matches"),
+    [
+        ("chrome --user-data-dir=C:/Example/Profile", True),
+        ('chrome --user-data-dir="C:\\Example\\Profile"', True),
+        ('chrome "--user-data-dir=C:/EXAMPLE/Profile/" --headless', True),
+        ('chrome --user-data-dir "C:/Example/Profile"', True),
+        ("chrome --user-data-dir=C:/Example/Profile-other", False),
+        ("chrome --user-data-dir=C:/Example/Profile/child", False),
+        ("chrome --other=C:/Example/Profile", False),
+        ("chrome --other-user-data-dir=C:/Example/Profile", False),
+        ("chrome --user-data-dir=C:/Other --other=C:/Example/Profile", False),
+    ],
+)
+def test_profile_processes_match_only_the_owned_argument(
+    monkeypatch: pytest.MonkeyPatch, command: str, matches: bool
+) -> None:
+    profile = Path("C:/Example/Profile")
+    monkeypatch.setattr(configuration_browser, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        configuration_browser, "_command_lines", lambda: [(123, command)]
+    )
+
+    assert configuration_browser._profile_processes(profile) == (
+        [123] if matches else []
+    )
 
 
 def declaration(**overrides: Any) -> dict[str, Any]:
