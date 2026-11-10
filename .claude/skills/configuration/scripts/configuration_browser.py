@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from ctypes import wintypes
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
@@ -75,8 +75,8 @@ def _windows_arguments(command: str) -> list[str]:
         raise OSError("Windows command-line parsing requires Windows")
 
 
-def _profile_processes(profile: Path) -> list[int]:
-    marker = str(profile).replace("\\", "/").rstrip("/")
+def _profile_processes(profile: PurePath) -> list[int]:
+    marker = profile.as_posix().rstrip("/")
     processes = []
     for pid, command in _command_lines():
         arguments = (
@@ -93,9 +93,10 @@ def _profile_processes(profile: Path) -> list[int]:
             if item == "--user-data-dir"
         )
         for value in values:
-            value = value.replace("\\", "/").rstrip("/")
+            value = value.rstrip("/")
             if os.name == "nt":
-                value, expected = value.casefold(), marker.casefold()
+                value = value.replace("\\", "/").rstrip("/").casefold()
+                expected = marker.casefold()
             else:
                 expected = marker
             if value == expected:
