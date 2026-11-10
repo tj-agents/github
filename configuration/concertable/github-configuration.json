@@ -238,6 +238,205 @@
           "platform-dotnet": "write",
           "concertable": null
         }
+      },
+      "Concertable.Auth.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Admin.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Application.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Artist.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Booking.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Concert.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Deal.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Hosting": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Seed.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Tenant.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.TestKit": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.User.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.B2B.Venue.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Composition.Testing": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Customer.Hosting": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Customer.Review.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Customer.TestKit": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Customer.Ticket.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Payment.Client": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Payment.Contracts": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Search.Hosting": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "Concertable.Testing.E2E": {
+        "actions_access": {
+          "concertable": null
+        }
+      }
+    },
+    "container": {
+      "auth": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "b2b-seeding-simulator": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "b2b-web": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "b2b-workers": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "customer-web": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "payment-web": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "payment-workers": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "search-web": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "search-workers": {
+        "actions_access": {
+          "concertable": null
+        }
+      }
+    },
+    "npm": {
+      "b2b": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "build-config": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "customer": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "mobile": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "shared": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "web": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "web-b2b": {
+        "actions_access": {
+          "concertable": null
+        }
+      },
+      "web-shared": {
+        "actions_access": {
+          "concertable": null
+        }
       }
     }
   },
