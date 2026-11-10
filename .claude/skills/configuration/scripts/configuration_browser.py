@@ -45,7 +45,7 @@ def _command_lines() -> list[tuple[int, str]]:
     processes = []
     for entry in Path("/proc").iterdir():
         try:
-            command = (entry / "cmdline").read_bytes().replace(b"\0", b" ")
+            command = (entry / "cmdline").read_bytes()
         except OSError:
             continue
         if entry.name.isdigit():
@@ -61,8 +61,24 @@ def _profile_processes(profile: Path) -> list[int]:
     )
     processes = []
     for pid, command in _command_lines():
-        for match in argument.finditer(command):
-            value = next(value for value in match.groups() if value is not None)
+        if os.name == "nt":
+            values = [
+                next(value for value in match.groups() if value is not None)
+                for match in argument.finditer(command)
+            ]
+        else:
+            arguments = command.split("\0")
+            values = [
+                item.removeprefix("--user-data-dir=")
+                for item in arguments
+                if item.startswith("--user-data-dir=")
+            ]
+            values.extend(
+                arguments[index + 1]
+                for index, item in enumerate(arguments[:-1])
+                if item == "--user-data-dir"
+            )
+        for value in values:
             value = value.replace("\\", "/").rstrip("/")
             if os.name == "nt":
                 value, expected = value.casefold(), marker.casefold()
