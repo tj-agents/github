@@ -3,6 +3,7 @@ import http.client
 import json
 import os
 import shutil
+import socket
 import threading
 import urllib.parse
 from collections.abc import Iterator
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_socket
 from access_core import (
     TOKEN_FORMS,
     AccessError,
@@ -205,6 +207,7 @@ def test_all_organization_repositories_preserves_owner_and_private_probe(
     assert not any("*" in call for call in api.calls)
 
 
+@pytest.mark.allow_hosts(["127.0.0.1"])
 def test_classic_local_submission_requires_matching_token_and_sso_confirmation(
     token_server: TokenServer,
 ) -> None:
@@ -443,6 +446,7 @@ def submit(
         return response.status, response.read().decode()
 
 
+@pytest.mark.allow_hosts(["127.0.0.1"])
 def test_local_submission_receives_token_without_echo_or_logs(
     token_server: TokenServer,
     capsys: pytest.CaptureFixture[str],
@@ -454,6 +458,7 @@ def test_local_submission_receives_token_without_echo_or_logs(
     assert TOKEN not in str(capsys.readouterr())
 
 
+@pytest.mark.allow_hosts(["127.0.0.1"])
 def test_local_page_displays_exact_organization_and_repository_allowlist(
     token_server: TokenServer,
 ) -> None:
@@ -483,6 +488,7 @@ def test_local_page_displays_exact_organization_and_repository_allowlist(
         {"body": "a" * 5000},
     ],
 )
+@pytest.mark.allow_hosts(["127.0.0.1"])
 def test_local_submission_rejects_cross_origin_or_malformed_input(
     token_server: TokenServer,
     kwargs: dict[str, str],
@@ -491,3 +497,13 @@ def test_local_submission_rejects_cross_origin_or_malformed_input(
     assert status in {400, 403}
     assert token_server.token is None
     assert TOKEN not in body
+
+
+@pytest.mark.allow_hosts(["127.0.0.1"])
+def test_local_server_socket_exception_still_blocks_external_connections() -> None:
+    with (
+        socket.socket() as connection,
+        pytest.warns(UserWarning, match="test tried to use"),
+        pytest.raises(pytest_socket.SocketConnectBlockedError, match=r"192\.0\.2\.1"),
+    ):
+        connection.connect(("192.0.2.1", 80))
