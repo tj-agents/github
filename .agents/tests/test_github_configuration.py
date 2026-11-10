@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -15,6 +16,7 @@ from configuration_declaration import (
 from configuration_packages import Change, changes
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Uses Windows native argv parsing")
 @pytest.mark.parametrize(
     ("command", "matches"),
     [
@@ -26,6 +28,8 @@ from configuration_packages import Change, changes
         ("chrome --user-data-dir=C:/Example/Profile/child", False),
         ("chrome --other=C:/Example/Profile", False),
         ("chrome --other-user-data-dir=C:/Example/Profile", False),
+        ('chrome --other="a --user-data-dir=C:/Example/Profile other"', False),
+        ('chrome "--other a --user-data-dir=C:/Example/Profile other"', False),
         ("chrome --user-data-dir=C:/Other --other=C:/Example/Profile", False),
     ],
 )
