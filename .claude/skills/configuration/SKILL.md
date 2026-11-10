@@ -1,6 +1,6 @@
 ---
 name: configuration
-description: Declare a GitHub owner's settings in one file and converge them with plan and apply, including settings GitHub exposes only in its web UI such as package Manage Actions access. Use when onboarding a repository or fixing GitHub access instead of changing settings by hand.
+description: Use when onboarding or changing declared GitHub owner settings through the shared plan/apply configuration workflow.
 kind: utility
 domain: github
 profile: core
