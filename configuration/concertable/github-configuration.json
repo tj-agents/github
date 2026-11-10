@@ -5,199 +5,238 @@
     "nuget": {
       "Concertable.AppHost.Shared": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Auth.Hosting": {
         "actions_access": {
-          "payment": "read"
+          "payment": "read",
+          "concertable": null
         }
       },
       "Concertable.Build": {
         "actions_access": {
           "platform-dotnet": "admin",
           "payment": "read",
-          "search": "read"
+          "search": "read",
+          "concertable": null
         }
       },
       "Concertable.Contracts": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.DataAccess.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.DataAccess.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Frontend.Hosting": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Grpc": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Kernel": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Messaging.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Messaging.AspNetCore": {
         "actions_access": {
-          "platform-dotnet": "admin"
+          "platform-dotnet": "admin",
+          "concertable": null
         }
       },
       "Concertable.Messaging.AzureServiceBus": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Messaging.Contracts": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Messaging.Domain": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Messaging.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Payment.Hosting": {
         "actions_access": {
-          "payment": "read"
+          "payment": "read",
+          "concertable": null
         }
       },
       "Concertable.Payment.TestKit": {
         "actions_access": {
-          "payment": "read"
+          "payment": "read",
+          "concertable": null
         }
       },
       "Concertable.Seed.Identity": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Seed.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Seed.Shared": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.ServiceDefaults": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Api": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Blob.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Blob.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Email.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Email.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Geocoding.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Geocoding.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Imaging.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Imaging.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Notification.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Pdf.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.Pdf.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.QrCode.Application": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Shared.QrCode.Infrastructure": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Testing": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Testing.Architecture": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Testing.Integration": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       },
       "Concertable.Testing.Unit": {
         "actions_access": {
-          "platform-dotnet": "write"
+          "platform-dotnet": "write",
+          "concertable": null
         }
       }
     }

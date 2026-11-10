@@ -47,6 +47,23 @@ def test_changes_cover_only_declared_drift() -> None:
     ].describe() == ("nuget/Example.Kernel: platform read -> write")
 
 
+def test_null_access_removes_only_the_named_repository() -> None:
+    parsed = parse(
+        declaration(
+            packages={
+                "nuget": {"Example.Kernel": {"actions_access": {"legacy": None}}}
+            }
+        )
+    )
+    package = parsed.packages[0]
+
+    pending = changes(package, {"legacy": Role.ADMIN, "consumer": Role.READ})
+
+    assert pending == [Change(package, "legacy", Role.ADMIN, None)]
+    assert pending[0].describe() == "nuget/Example.Kernel: legacy remove admin"
+    assert changes(package, {"consumer": Role.READ}) == []
+
+
 @pytest.mark.parametrize(
     ("document", "message"),
     [
