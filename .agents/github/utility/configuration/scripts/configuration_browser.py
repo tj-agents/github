@@ -1,10 +1,12 @@
+import ctypes
 import os
-import re
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from ctypes import wintypes
 from pathlib import Path
 
 from playwright.sync_api import Error as PlaywrightError
@@ -53,31 +55,43 @@ def _command_lines() -> list[tuple[int, str]]:
     return processes
 
 
+def _windows_arguments(command: str) -> list[str]:
+    if sys.platform != "win32":
+        raise OSError("Windows command-line parsing requires Windows")
+    else:
+        count = ctypes.c_int()
+        parse = ctypes.windll.shell32.CommandLineToArgvW
+        parse.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
+        parse.restype = ctypes.POINTER(wintypes.LPWSTR)
+        release = ctypes.windll.kernel32.LocalFree
+        release.argtypes = [wintypes.HLOCAL]
+        release.restype = wintypes.HLOCAL
+        arguments = parse(command, ctypes.byref(count))
+        if not arguments:
+            raise ctypes.WinError()
+        try:
+            return [arguments[index] for index in range(count.value)]
+        finally:
+            release(ctypes.cast(arguments, wintypes.HLOCAL))
+
+
 def _profile_processes(profile: Path) -> list[int]:
     marker = str(profile).replace("\\", "/").rstrip("/")
-    argument = re.compile(
-        r'(?:^|\s)(?:"--user-data-dir(?:=|\s+)([^"]+)"|'
-        r'--user-data-dir(?:=|\s+)(?:"([^"]+)"|(\S+)))(?=\s|$)'
-    )
     processes = []
     for pid, command in _command_lines():
-        if os.name == "nt":
-            values = [
-                next(value for value in match.groups() if value is not None)
-                for match in argument.finditer(command)
-            ]
-        else:
-            arguments = command.split("\0")
-            values = [
-                item.removeprefix("--user-data-dir=")
-                for item in arguments
-                if item.startswith("--user-data-dir=")
-            ]
-            values.extend(
-                arguments[index + 1]
-                for index, item in enumerate(arguments[:-1])
-                if item == "--user-data-dir"
-            )
+        arguments = (
+            _windows_arguments(command) if os.name == "nt" else command.split("\0")
+        )
+        values = [
+            item.removeprefix("--user-data-dir=")
+            for item in arguments
+            if item.startswith("--user-data-dir=")
+        ]
+        values.extend(
+            arguments[index + 1]
+            for index, item in enumerate(arguments[:-1])
+            if item == "--user-data-dir"
+        )
         for value in values:
             value = value.replace("\\", "/").rstrip("/")
             if os.name == "nt":
