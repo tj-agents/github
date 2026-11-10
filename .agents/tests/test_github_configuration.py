@@ -43,6 +43,31 @@ def test_profile_processes_match_only_the_owned_argument(
     )
 
 
+@pytest.mark.parametrize(
+    ("arguments", "matches"),
+    [
+        (["--user-data-dir=/home/user/agent state/browser-profile"], True),
+        (["--user-data-dir", "/home/user/agent state/browser-profile"], True),
+        (["--user-data-dir=/home/user/agent state/browser-profile-other"], False),
+        (["--user-data-dir=/home/user/Agent State/browser-profile"], False),
+        (["--other=/home/user/agent state/browser-profile"], False),
+    ],
+)
+def test_profile_processes_preserve_posix_argument_boundaries(
+    monkeypatch: pytest.MonkeyPatch, arguments: list[str], matches: bool
+) -> None:
+    profile = Path("/home/user/agent state/browser-profile")
+    command = "\0".join(["/opt/google/chrome", *arguments, "--headless", ""])
+    monkeypatch.setattr(configuration_browser, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(
+        configuration_browser, "_command_lines", lambda: [(123, command)]
+    )
+
+    assert configuration_browser._profile_processes(profile) == (
+        [123] if matches else []
+    )
+
+
 def declaration(**overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
         "schema_version": 1,
