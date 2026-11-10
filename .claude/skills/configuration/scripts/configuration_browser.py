@@ -56,9 +56,7 @@ def _command_lines() -> list[tuple[int, str]]:
 
 
 def _windows_arguments(command: str) -> list[str]:
-    if sys.platform != "win32":
-        raise OSError("Windows command-line parsing requires Windows")
-    else:
+    if sys.platform == "win32":
         count = ctypes.c_int()
         parse = ctypes.windll.shell32.CommandLineToArgvW
         parse.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
@@ -73,6 +71,8 @@ def _windows_arguments(command: str) -> list[str]:
             return [arguments[index] for index in range(count.value)]
         finally:
             release(ctypes.cast(arguments, wintypes.HLOCAL))
+    else:
+        raise OSError("Windows command-line parsing requires Windows")
 
 
 def _profile_processes(profile: Path) -> list[int]:
