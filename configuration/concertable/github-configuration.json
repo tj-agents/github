@@ -8,9 +8,16 @@
           "platform-dotnet": "write"
         }
       },
+      "Concertable.Auth.Hosting": {
+        "actions_access": {
+          "payment": "read"
+        }
+      },
       "Concertable.Build": {
         "actions_access": {
-          "platform-dotnet": "admin"
+          "platform-dotnet": "admin",
+          "payment": "read",
+          "search": "read"
         }
       },
       "Concertable.Contracts": {
@@ -71,6 +78,16 @@
       "Concertable.Messaging.Infrastructure": {
         "actions_access": {
           "platform-dotnet": "write"
+        }
+      },
+      "Concertable.Payment.Hosting": {
+        "actions_access": {
+          "payment": "read"
+        }
+      },
+      "Concertable.Payment.TestKit": {
+        "actions_access": {
+          "payment": "read"
         }
       },
       "Concertable.Seed.Identity": {
