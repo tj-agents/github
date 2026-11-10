@@ -29,7 +29,7 @@ class Role(StrEnum):
 class Package:
     type: PackageType
     name: str
-    actions_access: dict[str, Role]
+    actions_access: dict[str, Role | None]
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,11 @@ def _package(package_type: PackageType, name: str, value: Any) -> Package:
     _keys(body, {"actions_access"}, where)
     access = _object(body.get("actions_access", {}), f"{where}.actions_access")
     roles = {
-        repository: _enum(Role, role, f"{where}.actions_access.{repository}")
+        repository: (
+            None
+            if role is None
+            else _enum(Role, role, f"{where}.actions_access.{repository}")
+        )
         for repository, role in access.items()
     }
     for repository in roles:

@@ -25,10 +25,12 @@ class Change:
     package: Package
     repository: str
     current: Role | None
-    desired: Role
+    desired: Role | None
 
     def describe(self) -> str:
         target = f"{self.package.type}/{self.package.name}: {self.repository}"
+        if self.desired is None:
+            return f"{target} remove {self.current}"
         if self.current is None:
             return f"{target} add {self.desired}"
         return f"{target} {self.current} -> {self.desired}"
@@ -104,6 +106,18 @@ def _set_role(page: Page, repository: str, role: Role) -> None:
     row.locator(".js-permission-success").wait_for(state="visible")
 
 
+def _remove(page: Page, package: Package, repository: str) -> None:
+    row = _row(page, repository)
+    row.locator(
+        "summary[aria-label='remove access to repository from this package']"
+    ).click()
+    row.get_by_role(
+        "button", name=f"Remove {repository} from {package.name}", exact=True
+    ).click()
+    row.wait_for(state="detached")
+    require_ordinary_page(page)
+
+
 def plan(page: Page, owner: str, package: Package) -> tuple[list[Change], list[str]]:
     _open(page, owner, package)
     current = read(page)
@@ -114,6 +128,9 @@ def plan(page: Page, owner: str, package: Package) -> tuple[list[Change], list[s
 def apply(page: Page, owner: str, package: Package) -> list[Change]:
     pending, _ = plan(page, owner, package)
     for change in pending:
+        if change.desired is None:
+            _remove(page, package, change.repository)
+            continue
         if change.current is None:
             _add(page, change.repository)
         if read(page).get(change.repository) != change.desired:

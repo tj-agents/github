@@ -39,7 +39,7 @@ repositories in an owner need nothing further.
   "owner": "Concertable",
   "packages": {
     "nuget": {
-      "Concertable.Kernel": { "actions_access": { "platform-dotnet": "write" } }
+      "Concertable.Kernel": { "actions_access": { "platform-dotnet": "write", "concertable": null } }
     }
   }
 }
@@ -85,7 +85,8 @@ each sync pushes one Infisical folder to the owner's organization (only the list
 `plan` prints each declared package difference without writing, then runs `terraform plan` for the root.
 `apply` changes only package differences, then reloads and fails unless the page reads back as declared;
 API settings apply when the declaration merges. Repositories a package does not name are reported
-`unmanaged` and never removed; a package not yet published is reported and skipped. Package roles are
+`unmanaged` and never removed. A named repository with `null` access is removed if present and verified
+absent on readback; omission never removes access. A package not yet published is reported and skipped. Package roles are
 `read`, `write` and `admin`; types are `container`, `maven`, `npm`, `nuget` and `rubygems`. Rule types the
 module does not converge fail the plan.
 
