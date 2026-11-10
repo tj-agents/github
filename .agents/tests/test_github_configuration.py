@@ -1,5 +1,5 @@
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import Any
 
@@ -68,6 +68,28 @@ def test_profile_processes_preserve_posix_argument_boundaries(
     )
 
     assert configuration_browser._profile_processes(profile) == (
+        [123] if matches else []
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "value", "matches"),
+    [
+        (r"/home/user/agent\state", "/home/user/agent/state", False),
+        ("/home/user/agent/state", r"/home/user/agent\state", False),
+        (r"/home/user/agent\state", r"/home/user/agent\state", True),
+    ],
+)
+def test_posix_profile_paths_preserve_literal_backslashes(
+    monkeypatch: pytest.MonkeyPatch, profile: str, value: str, matches: bool
+) -> None:
+    command = "\0".join(["chrome", f"--user-data-dir={value}", ""])
+    monkeypatch.setattr(configuration_browser, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(
+        configuration_browser, "_command_lines", lambda: [(123, command)]
+    )
+
+    assert configuration_browser._profile_processes(PurePosixPath(profile)) == (
         [123] if matches else []
     )
 
