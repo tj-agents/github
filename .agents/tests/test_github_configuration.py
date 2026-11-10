@@ -50,9 +50,7 @@ def test_changes_cover_only_declared_drift() -> None:
 def test_null_access_removes_only_the_named_repository() -> None:
     parsed = parse(
         declaration(
-            packages={
-                "nuget": {"Example.Kernel": {"actions_access": {"legacy": None}}}
-            }
+            packages={"nuget": {"Example.Kernel": {"actions_access": {"legacy": None}}}}
         )
     )
     package = parsed.packages[0]
