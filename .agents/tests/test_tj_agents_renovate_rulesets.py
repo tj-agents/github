@@ -12,11 +12,13 @@ DECLARATION = (
 
 def rulesets() -> list[tuple[str, str, dict[str, Any]]]:
     document = json.loads(DECLARATION.read_text(encoding="utf-8"))
-    return [
-        (repository, name, ruleset)
-        for repository, settings in document["repositories"].items()
-        for name, ruleset in settings.get("rulesets", {}).items()
-    ]
+    found = []
+    for repository, settings in document["repositories"].items():
+        found += [
+            (repository, name, ruleset)
+            for name, ruleset in settings.get("rulesets", {}).items()
+        ]
+    return found
 
 
 def renovate_bypasses(ruleset: dict[str, Any]) -> bool:
