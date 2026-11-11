@@ -551,11 +551,37 @@ def rotate(
     return evidence
 
 
+@dataclass(frozen=True, slots=True)
+class TokenPage:
+    title: str
+    details: str
+    instructions: str
+    confirmation: str
+    kind: TokenKind
+    token_url: str
+
+
+def employer_token_page(profile: Profile, token_kind: TokenKind) -> TokenPage:
+    form = TOKEN_FORMS[token_kind]
+    owner = html.escape(profile.organization)
+    repositories = ", ".join(html.escape(repo) for repo in profile.repositories)
+    if profile.repositories == ("*",):
+        repositories = f"All repositories in {owner} your account can access"
+    instructions, confirmation = form.instructions(profile)
+    return TokenPage(
+        "Employer GitHub access",
+        f"{owner}. Repositories: {repositories}",
+        instructions,
+        confirmation,
+        token_kind,
+        form.token_url(profile),
+    )
+
+
 class TokenServer(http.server.HTTPServer):
     token: str | None = None
     nonce: str
-    profile: Profile
-    form: TokenForm = github_token_fine_grained
+    page: TokenPage
 
     def get_request(self) -> tuple[Any, Any]:
         connection, address = super().get_request()
@@ -597,22 +623,17 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
         if not self._allowed():
             self._send(404, "Not found")
             return
-        profile = self.server.profile
-        owner = html.escape(profile.organization)
-        repositories = ", ".join(html.escape(repo) for repo in profile.repositories)
-        if profile.repositories == ("*",):
-            repositories = f"All repositories in {owner} your account can access"
-        instructions, confirmation = self.server.form.instructions(profile)
-        label = self.server.form.kind.label
+        page = self.server.page
+        label = page.kind.label
         self._send(
             200,
-            f"<!doctype html><title>Employer GitHub access</title><h1>{owner}</h1>"
-            f"<p>{instructions}</p>"
-            f"<p>Repositories: {repositories}</p>"
+            f"<!doctype html><title>{page.title}</title><h1>{page.title}</h1>"
+            f"<p>{page.instructions}</p>"
+            f"<p>{page.details}</p>"
             f'<form method="post"><label>{label} '
             '<input name="token" type="password" autocomplete="off" required>'
             '</label><p><label><input type="checkbox" name="owner_confirmed" '
-            f'value="yes" required>{confirmation}</label></p>'
+            f'value="yes" required>{page.confirmation}</label></p>'
             "<button>Validate and save securely</button></form>",
         )
 
@@ -642,7 +663,7 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
             ):
                 raise ValueError("Invalid fields")
             token = fields["token"][0]
-            validate_token(token, self.server.form.kind)
+            validate_token(token, self.server.page.kind)
         except (ValueError, OSError, AccessError):
             self._send(
                 400,
@@ -660,22 +681,28 @@ class TokenHandler(http.server.BaseHTTPRequestHandler):
 def receive_token(
     profile: Profile, timeout: float = 900, *, token_kind: TokenKind | None = None
 ) -> str:
-    token_kind = token_kind or profile.token_kind
-    form = TOKEN_FORMS[token_kind]
-    token_url = form.token_url(profile)
+    return receive_token_page(
+        employer_token_page(profile, token_kind or profile.token_kind), timeout
+    )
+
+
+def receive_token_page(page: TokenPage, timeout: float = 900) -> str:
     with TokenServer(("127.0.0.1", 0), TokenHandler) as server:
-        server.nonce, server.profile = secrets.token_urlsafe(32), profile
-        server.form = form
+        server.nonce, server.page = secrets.token_urlsafe(32), page
         server.timeout = 1
         local_url = f"http://127.0.0.1:{server.server_port}/{server.nonce}"
         print(
-            f"Create a {token_kind} token for {profile.organization}; "
-            "submit it in the local page.",
+            json.dumps(
+                {
+                    "status": "awaiting-token",
+                    "token_kind": page.kind.value,
+                    "github_url": page.token_url,
+                    "local_url": local_url,
+                }
+            ),
             flush=True,
         )
-        print("GitHub: " + token_url, flush=True)
-        print("Local page: " + local_url, flush=True)
-        webbrowser.open(token_url)
+        webbrowser.open(page.token_url)
         webbrowser.open(local_url)
         deadline = time.monotonic() + timeout
         while server.token is None and time.monotonic() < deadline:

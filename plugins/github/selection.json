@@ -15,13 +15,11 @@
       "kind": "utility",
       "profile": "core",
       "applicability": [
-        "explicitly selected employer GitHub access"
+        "GitHub container package access or explicitly selected employer GitHub access"
       ],
       "requires": [
         "python",
-        "git",
-        "Git Credential Manager",
-        "secure credential backend"
+        "secure credential backend; Docker credential helper for packages; git and Git Credential Manager for employer access"
       ],
       "provenance": [
         "house"
