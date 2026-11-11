@@ -1,0 +1,26 @@
+[
+  {
+    "path": ".github/workflows/ci.yml",
+    "rule": "naming",
+    "message": "job 'verify' name 'verify' must start with an uppercase letter",
+    "reason": "Preserves the existing GitHub check context consumed by branch protection and release qualification."
+  },
+  {
+    "path": ".github/workflows/configuration.yml",
+    "rule": "naming",
+    "message": "job 'apply' name 'apply' must start with an uppercase letter",
+    "reason": "Preserves the existing GitHub check context consumed by branch protection and release qualification."
+  },
+  {
+    "path": ".github/workflows/configuration.yml",
+    "rule": "naming",
+    "message": "environment variable 'TF_TOKEN_app_terraform_io' has the wrong case",
+    "reason": "Terraform requires this exact environment variable spelling for its app.terraform.io token."
+  },
+  {
+    "path": ".github/workflows/configuration.yml",
+    "rule": "naming",
+    "message": "environment variable 'TF_TOKEN_app_terraform_io' has the wrong case",
+    "reason": "Terraform requires this exact environment variable spelling for its app.terraform.io token."
+  }
+]
