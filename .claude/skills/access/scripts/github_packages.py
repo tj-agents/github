@@ -5,6 +5,7 @@ import hashlib
 import html
 import http.client
 import json
+import os
 import re
 import secrets
 import shutil
@@ -40,7 +41,7 @@ class PackageTarget:
             raise AccessError("login-invalid: select the expected GitHub login")
         if not re.fullmatch(
             r"ghcr\.io/[a-z0-9]+(?:[._-][a-z0-9]+)*"
-            r"(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+@sha256:[a-f0-9]{64}",
+            r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+@sha256:[a-f0-9]{64}",
             self.image,
         ):
             raise AccessError(
@@ -192,6 +193,20 @@ class PackageStore(Protocol):
     def erase(self) -> None: ...
 
 
+def helper_executable(helper: str, search_path: str) -> str:
+    for entry in search_path.split(os.pathsep):
+        directory = Path(entry)
+        if not entry or not directory.is_absolute():
+            continue
+        executable = shutil.which(str(directory / ("docker-credential-" + helper)))
+        if executable is not None and Path(executable).is_absolute():
+            return executable
+    raise AccessError(
+        "secure-store-unavailable: install the configured Docker helper "
+        "in an absolute PATH directory"
+    )
+
+
 class DockerStore:
     def __init__(
         self, config: Path, environment: Mapping[str, str], platform: str
@@ -210,21 +225,14 @@ class DockerStore:
         helper = helpers.get("ghcr.io", data.get("credsStore"))
         supported = {
             "win32": {"desktop", "wincred"},
-            "linux": {"desktop", "secretservice", "pass"},
+            "linux": {"desktop", "desktop.exe", "secretservice", "pass"},
             "darwin": {"desktop", "osxkeychain"},
         }
         if not isinstance(helper, str) or helper not in supported.get(platform, set()):
             raise AccessError(
                 "secure-store-unavailable: select an OS-backed Docker credential helper"
             )
-        executable = shutil.which(
-            "docker-credential-" + helper, path=environment.get("PATH")
-        )
-        if executable is None:
-            raise AccessError(
-                "secure-store-unavailable: install the configured Docker helper"
-            )
-        self.executable = executable
+        self.executable = helper_executable(helper, environment.get("PATH", ""))
         self.environment = private_environment(environment)
 
     def _run(self, operation: str, value: str) -> str:

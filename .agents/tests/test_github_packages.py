@@ -2,7 +2,9 @@ import contextlib
 import hashlib
 import http.client
 import json
+import os
 import subprocess
+import sys
 import threading
 import urllib.parse
 from collections.abc import Iterator, Sequence
@@ -195,6 +197,26 @@ def test_target_rejects_mutable_or_other_registry_images(image: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "repository", ["my__image", "my--image", "my---image", "path__part/my--image"]
+)
+def test_target_accepts_oci_repository_separators(repository: str) -> None:
+    image = f"ghcr.io/example/{repository}@sha256:" + "a" * 64
+    target = packages.PackageTarget("reader", image)
+    assert target.repository == f"example/{repository}"
+    assert target.digest == "sha256:" + "a" * 64
+
+
+@pytest.mark.parametrize(
+    "repository", ["my___image", "my..image", "my_-image", "my--", "--image"]
+)
+def test_target_rejects_invalid_oci_repository_separators(repository: str) -> None:
+    with pytest.raises(AccessError, match="image-invalid"):
+        packages.PackageTarget(
+            "reader", f"ghcr.io/example/{repository}@sha256:" + "a" * 64
+        )
+
+
+@pytest.mark.parametrize(
     "configuration",
     [{}, {"auths": {"ghcr.io": {"auth": "not-used"}}}, {"credsStore": "plaintext"}],
 )
@@ -208,7 +230,12 @@ def test_docker_store_fails_closed_without_secure_helper(
 
 @pytest.mark.parametrize(
     ("platform", "helper"),
-    [("win32", "desktop"), ("linux", "pass"), ("linux", "secretservice")],
+    [
+        ("win32", "desktop"),
+        ("linux", "desktop.exe"),
+        ("linux", "pass"),
+        ("linux", "secretservice"),
+    ],
 )
 def test_docker_store_uses_selected_helper_stdin_and_preserves_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str, helper: str
@@ -224,9 +251,11 @@ def test_docker_store_uses_selected_helper_stdin_and_preserves_config(
     config.write_text(original, encoding="utf-8")
     calls: list[tuple[list[str], str]] = []
 
-    def which(name: str, *, path: str | None) -> str:
-        assert name == "docker-credential-" + helper
-        return "helper-executable"
+    executable = str(tmp_path / ("docker-credential-" + helper))
+
+    def which(name: str) -> str:
+        assert name == executable
+        return executable
 
     def run(
         command: Sequence[str], **kwargs: object
@@ -247,13 +276,13 @@ def test_docker_store_uses_selected_helper_stdin_and_preserves_config(
     monkeypatch.setattr("github_packages.shutil.which", which)
     monkeypatch.setattr("github_packages.subprocess.run", run)
     store = packages.DockerStore(
-        tmp_path, {"PATH": "fixture", "GH_TOKEN": "unrelated-secret"}, platform
+        tmp_path, {"PATH": str(tmp_path), "GH_TOKEN": "unrelated-secret"}, platform
     )
     store.check("reader")
     assert store.read("reader") == TOKEN
     store.write("reader", TOKEN)
-    assert calls[0] == (["helper-executable", "list"], "")
-    assert calls[2] == (["helper-executable", "get"], "ghcr.io")
+    assert calls[0] == ([executable, "list"], "")
+    assert calls[2] == ([executable, "get"], "ghcr.io")
     assert json.loads(calls[3][1]) == {
         "ServerURL": "ghcr.io",
         "Username": "reader",
@@ -277,16 +306,14 @@ def test_docker_store_denies_conflict_or_locked_helper_without_relaying_output(
     failure: str,
 ) -> None:
     (tmp_path / "config.json").write_text('{"credsStore":"desktop"}', encoding="utf-8")
-    monkeypatch.setattr(
-        "github_packages.shutil.which", lambda *args, **kwargs: "helper"
-    )
+    monkeypatch.setattr("github_packages.shutil.which", lambda name: name)
     monkeypatch.setattr(
         "github_packages.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(
             ["helper"], returncode, output, TOKEN
         ),
     )
-    store = packages.DockerStore(tmp_path, {}, "win32")
+    store = packages.DockerStore(tmp_path, {"PATH": str(tmp_path)}, "win32")
     with pytest.raises(AccessError, match=failure) as caught:
         store.check("reader")
     assert TOKEN not in str(caught.value)
@@ -296,15 +323,39 @@ def test_docker_store_missing_credential_requests_onboarding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "config.json").write_text('{"credsStore":"desktop"}', encoding="utf-8")
-    monkeypatch.setattr(
-        "github_packages.shutil.which", lambda *args, **kwargs: "helper"
-    )
+    monkeypatch.setattr("github_packages.shutil.which", lambda name: name)
     monkeypatch.setattr(
         "github_packages.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(["helper"], 0, "{}", ""),
     )
-    store = packages.DockerStore(tmp_path, {}, "win32")
+    store = packages.DockerStore(tmp_path, {"PATH": str(tmp_path)}, "win32")
     assert store.read("reader") is None
+
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_docker_store_never_resolves_helper_from_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed: bool
+) -> None:
+    checkout, trusted = tmp_path / "checkout", tmp_path / "installed"
+    checkout.mkdir()
+    trusted.mkdir()
+    name = "docker-credential-desktop" + (".exe" if sys.platform == "win32" else "")
+    shadow = checkout / name
+    shadow.write_bytes(b"inert file; never executed")
+    shadow.chmod(0o755)
+    if installed:
+        real = trusted / name
+        real.write_bytes(b"inert file; never executed")
+        real.chmod(0o755)
+    (tmp_path / "config.json").write_text('{"credsStore":"desktop"}', encoding="utf-8")
+    monkeypatch.chdir(checkout)
+    environment = {"PATH": os.pathsep.join(["", ".", "relative", str(trusted)])}
+    if installed:
+        store = packages.DockerStore(tmp_path, environment, sys.platform)
+        assert Path(store.executable).samefile(trusted / name)
+    else:
+        with pytest.raises(AccessError, match="secure-store-unavailable"):
+            packages.DockerStore(tmp_path, environment, sys.platform)
 
 
 @pytest.fixture
