@@ -1,4 +1,4 @@
-name: configuration
+name: Configuration
 
 on:
   push:
@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   apply:
+    name: apply
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -24,12 +25,20 @@ jobs:
         owner: [tj-agents, concertable]
     runs-on: ubuntu-latest
     environment: configuration
-    env:
-      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_wrapper: false
-      - run: terraform -chdir=configuration/${{ matrix.owner }} init -input=false
-      - run: terraform -chdir=configuration/${{ matrix.owner }} apply -input=false -auto-approve
+      - name: Initialize Terraform
+        env:
+          OWNER: ${{ matrix.owner }}
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+        run: terraform -chdir="configuration/$OWNER" init -input=false
+      - name: Apply Terraform
+        env:
+          OWNER: ${{ matrix.owner }}
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+        run: terraform -chdir="configuration/$OWNER" apply -input=false -auto-approve
