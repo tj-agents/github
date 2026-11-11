@@ -14,13 +14,13 @@ from typing import Any
 import pytest
 import pytest_socket
 from access_core import (
-    TOKEN_FORMS,
     AccessError,
     GCMVault,
     Profile,
     State,
     TokenHandler,
     TokenServer,
+    employer_token_page,
     private_environment,
     response_error,
     rotate,
@@ -210,8 +210,9 @@ def test_all_organization_repositories_preserves_owner_and_private_probe(
 @pytest.mark.allow_hosts(["127.0.0.1"])
 def test_classic_local_submission_requires_matching_token_and_sso_confirmation(
     token_server: TokenServer,
+    profile: Profile,
 ) -> None:
-    token_server.form = TOKEN_FORMS[TokenKind.CLASSIC]
+    token_server.page = employer_token_page(profile, TokenKind.CLASSIC)
     with contextlib.closing(
         http.client.HTTPConnection("127.0.0.1", token_server.server_port, timeout=3)
     ) as connection:
@@ -410,7 +411,10 @@ def test_gcm_pins_selected_git_before_activated_launchers(
 @pytest.fixture
 def token_server(profile: Profile) -> Iterator[TokenServer]:
     with TokenServer(("127.0.0.1", 0), TokenHandler) as server:
-        server.profile, server.nonce = profile, "test-nonce"
+        server.page, server.nonce = (
+            employer_token_page(profile, profile.token_kind),
+            "test-nonce",
+        )
         thread = threading.Thread(
             target=server.serve_forever, kwargs={"poll_interval": 0.01}
         )

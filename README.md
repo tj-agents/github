@@ -17,8 +17,9 @@ python -B .agents/github/utility/collaboration/scripts/github_collaboration.py -
 See the [request examples and behavior](.agents/github/utility/collaboration/SKILL.md).
 Use `python3` on Linux. Both hosts receive the same generated skill and shipped script.
 
-For organization-scoped employer credentials, use [GitHub access](.agents/github/utility/access/SKILL.md).
-It supplies browser onboarding, secure OS storage, rotation and diagnostic checks with employer-owned data.
+For package-only GHCR credentials or organization-scoped employer credentials, use
+[GitHub access](.agents/github/utility/access/SKILL.md). It supplies browser onboarding, secure OS storage,
+renewal and diagnostic checks.
 
 This package owns GitHub interaction mechanics. Core owns engineering review and delivery;
 work-items owns record semantics; github-actions owns CI workflow standards and generators.

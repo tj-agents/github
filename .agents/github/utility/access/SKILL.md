@@ -1,15 +1,51 @@
 ---
 name: access
-description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate a fine-grained or explicitly authorized classic credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
+description: Securely onboard, renew and check GitHub credentials for package-only GHCR pulls or organization-scoped employer Git/gh access. Use when private container pulls need authentication, a package token expires, or employer GitHub access needs setup or diagnosis.
 kind: utility
 domain: github
 profile: core
-applicability: explicitly selected employer GitHub access
-requires: python, git, Git Credential Manager, secure credential backend
+applicability: GitHub container package access or explicitly selected employer GitHub access
+requires: python, secure credential backend; Docker credential helper for packages; git and Git Credential Manager for employer access
 provenance: house
 ---
 
-# Employer GitHub access
+# GitHub access
+
+Use the shipped Python 3.12+ `scripts/github_access.py` for onboarding, renewal and checks. Select
+`packages` for private GHCR image pulls; select the employer commands below for a bound Git/gh/MCP
+checkout. Derive the expected login and immutable image from the authorized task or project declaration.
+Package access does not select an employer profile or require repository permissions.
+
+## Container package access
+
+```text
+python -B <skill-directory>/scripts/github_access.py packages check --login <github-login> --image ghcr.io/<owner>/<image>@sha256:<digest>
+python -B <skill-directory>/scripts/github_access.py packages onboard --login <github-login> --image ghcr.io/<owner>/<image>@sha256:<digest>
+```
+
+Run `packages check` first. For a missing or expired credential, run `packages onboard`, which also
+renews an existing credential. The script opens the GitHub classic token form with only `read:packages`
+selected and a nonce-protected loopback page. The human chooses the expiry, creates the token and pastes
+it into that page. Use its structured `local_url` result if the browser does not open. Keep that process
+alive until submission and verification finish. Never reconstruct this flow with an ad hoc receiver or
+request tokens in chat, arguments, environment variables, clipboard automation or files.
+
+The script verifies the expected GitHub identity, exactly `read:packages` scope and authenticated access
+to the supplied manifest, including its digest, before saving. A rejected candidate leaves the saved
+credential unchanged. Saving requires exact secure-helper readback; a failed save restores the previous
+GHCR entry, or removes the new entry when none existed. A rollback failure reports uncertain credential
+state and never claims readiness. It uses the existing Docker configuration (`DOCKER_CONFIG` or `~/.docker`) and its
+configured OS-backed credential helper: Desktop/wincred on Windows, Desktop/Secret Service/pass on Linux,
+or Desktop/osxkeychain on macOS. An absent or unavailable secure helper fails closed; configure that
+backend, then rerun. Another account's existing GHCR entry is a conflict. Other registries, employer
+credentials and account-wide gh authentication are untouched. Never fall back to Docker's base64 `auth`
+storage or request `repo`/`workflow` scopes for this flow.
+
+Successful JSON output establishes identity, scope, secure storage and that immutable manifest's access.
+It does not prove every image or layer download; rerun the original authorized pull/build afterward.
+An access denial can require the package owner's grant or SSO authorization, not a broader token.
+
+## Employer GitHub access
 
 Use the shipped Python 3.12+ entry point with the employer-owned profile. The profile declares the
 organization, expected GitHub login, verification repository, repository allowlist and permissions.

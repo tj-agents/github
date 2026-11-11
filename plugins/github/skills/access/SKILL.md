@@ -1,15 +1,15 @@
 ---
 name: access
-description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate a fine-grained or explicitly authorized classic credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
+description: Securely onboard, renew and check GitHub credentials for package-only GHCR pulls or organization-scoped employer Git/gh access. Use when private container pulls need authentication, a package token expires, or employer GitHub access needs setup or diagnosis.
 kind: utility
 domain: github
 profile: core
-applicability: explicitly selected employer GitHub access
-requires: python, git, Git Credential Manager, secure credential backend
+applicability: GitHub container package access or explicitly selected employer GitHub access
+requires: python, secure credential backend; Docker credential helper for packages; git and Git Credential Manager for employer access
 provenance: house
 ---
 
-# Employer GitHub access
+# GitHub access
 
 Read and follow the [canonical definition](../../.agents/github/utility/access/SKILL.md) in full.
 This discovery entry is generated; edit the referenced `.agents/` definition.
