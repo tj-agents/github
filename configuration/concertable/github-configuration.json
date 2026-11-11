@@ -44,7 +44,8 @@
       "Concertable.Frontend.Hosting": {
         "actions_access": {
           "platform-dotnet": "write",
-          "concertable": null
+          "concertable": null,
+          "search": "read"
         }
       },
       "Concertable.Grpc": {
@@ -251,7 +252,8 @@
       },
       "Concertable.B2B.Application.Contracts": {
         "actions_access": {
-          "concertable": null
+          "concertable": null,
+          "search": "read"
         }
       },
       "Concertable.B2B.Artist.Contracts": {
@@ -261,7 +263,8 @@
       },
       "Concertable.B2B.Booking.Contracts": {
         "actions_access": {
-          "concertable": null
+          "concertable": null,
+          "search": "read"
         }
       },
       "Concertable.B2B.Concert.Contracts": {
@@ -326,7 +329,8 @@
       },
       "Concertable.Customer.Ticket.Contracts": {
         "actions_access": {
-          "concertable": null
+          "concertable": null,
+          "search": "read"
         }
       },
       "Concertable.Payment.Client": {
