@@ -14,6 +14,7 @@ import github_hosts
 import github_mcp_install
 import github_mcp_stdio
 import github_native_git
+import github_packages
 import github_platform
 import github_tools
 from github_tokens import TokenKind
@@ -188,9 +189,17 @@ def verify_mcp(
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        description="Secure organization-scoped GitHub access"
+        description="Secure employer GitHub and package-only GHCR access"
     )
     operations = result.add_subparsers(dest="operation", required=True)
+    packages = operations.add_parser("packages")
+    package_operations = packages.add_subparsers(
+        dest="package_operation", required=True
+    )
+    for operation in ("onboard", "check"):
+        command = package_operations.add_parser(operation)
+        command.add_argument("--login", required=True)
+        command.add_argument("--image", required=True)
     for operation in ("onboard", "rotate", "check"):
         command = operations.add_parser(operation)
         command.add_argument("--profile", type=Path)
@@ -236,6 +245,21 @@ def dispatch(
     arguments: argparse.Namespace, platform: github_platform.PlatformProtocol
 ) -> int:
     binding: github_binding.Binding | None
+    if arguments.operation == "packages":
+        target = github_packages.PackageTarget(arguments.login, arguments.image)
+        store = github_packages.DockerStore(
+            Path(os.environ.get("DOCKER_CONFIG", str(Path.home() / ".docker"))),
+            os.environ,
+            sys.platform,
+        )
+        print(
+            json.dumps(
+                github_packages.run(
+                    target, store, onboarding=arguments.package_operation == "onboard"
+                )
+            )
+        )
+        return 0
     if arguments.operation == "activate":
         binding = selected_binding(arguments.binding, platform)
         print(
@@ -407,7 +431,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if isinstance(error, access_core.AccessError)
             else ("local-operation-failed: check installed tools and public state")
         )
-        print(message, file=sys.stderr)
+        print(
+            json.dumps({"status": "failed", "error": message})
+            if arguments.operation == "packages"
+            else message,
+            file=sys.stderr,
+        )
         return 1
 
 
