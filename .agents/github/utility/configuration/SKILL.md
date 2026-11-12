@@ -70,6 +70,16 @@ mapping each secret name to a source the workspace's sensitive `secret_values` s
 }
 ```
 
+Gated approvals are one owner switch, not a ruleset per repository. With `approvals.required` true, every
+repository not in `except` gets a generated `merge-policy-review` ruleset requiring one approval on the
+default branch. Its bypass actors are that repository's `merge-policy` actors plus Renovate, which never
+waits for approval. Setting it false removes those rulesets on the next apply; required status checks in
+`merge-policy` stay enforced either way. A covered repository may not declare its own `merge-policy-review`.
+
+```json
+"approvals": { "required": true, "except": ["learning"] }
+```
+
 Secret values live only in Infisical. `secrets` names the owner's Infisical project and GitHub App connection;
 each sync pushes one Infisical folder to the owner's organization (only the listed `repositories`), one
 `repository` or one `repository_environment`. Syncs never delete GitHub secrets, and agents never see values.

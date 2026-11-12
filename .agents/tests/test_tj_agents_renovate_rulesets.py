@@ -40,20 +40,15 @@ def required_approvals(ruleset: dict[str, Any]) -> int:
     )
 
 
-@pytest.mark.parametrize(
-    ("repository", "name", "ruleset"),
-    [entry for entry in rulesets() if required_approvals(entry[2])],
-    ids=lambda value: value if isinstance(value, str) else "",
-)
-def test_renovate_never_needs_approval(
-    repository: str, name: str, ruleset: dict[str, Any]
-) -> None:
-    assert renovate_bypasses(ruleset), (
-        f"{repository}/{name} requires approval without exempting Renovate"
-    )
-    assert all(rule.get("type") == "pull_request" for rule in ruleset["rules"]), (
-        f"{repository}/{name} exempts Renovate from rules beyond approval"
-    )
+def test_declared_approval_rulesets_never_make_renovate_wait() -> None:
+    gated = [entry for entry in rulesets() if required_approvals(entry[2])]
+
+    assert [
+        f"{repository}/{name}"
+        for repository, name, ruleset in gated
+        if not renovate_bypasses(ruleset)
+        or any(rule.get("type") != "pull_request" for rule in ruleset["rules"])
+    ] == []
 
 
 @pytest.mark.parametrize(
