@@ -143,10 +143,7 @@ def _download(destination: Path, release: ReleaseArtifact) -> None:
         _Redirects(),
         urllib.request.HTTPSHandler(context=ssl.create_default_context()),
     )
-    request = urllib.request.Request(
-        RELEASE_ROOT + release.archive_name,
-        headers={"User-Agent": "tj-agents-github-access"},
-    )
+    request = urllib.request.Request(RELEASE_ROOT + release.archive_name)
     try:
         with (
             opener.open(request, timeout=30) as response,

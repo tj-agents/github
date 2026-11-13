@@ -17,6 +17,7 @@ from access_core import (
     TOKEN_FORMS,
     AccessError,
     GCMVault,
+    GitHubAPI,
     Profile,
     State,
     TokenHandler,
@@ -284,6 +285,37 @@ def test_verify_does_not_accept_public_access_as_approval_proof(
     api.private = False
     with pytest.raises(AccessError, match="verification-invalid"):
         verify(profile, api)
+
+
+class FakeResponse:
+    def __enter__(self) -> "FakeResponse":
+        return self
+
+    def __exit__(self, *values: object) -> None:
+        return None
+
+    @staticmethod
+    def read(size: int) -> bytes:
+        return b"{}"
+
+
+def test_github_api_read_sends_no_tool_identifying_user_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = GitHubAPI(TOKEN)
+    captured: list[Any] = []
+
+    def fake_open(request: Any, timeout: float) -> FakeResponse:
+        captured.append(request)
+        return FakeResponse()
+
+    monkeypatch.setattr(api.opener, "open", fake_open)
+
+    api.read("/user")
+
+    assert len(captured) == 1
+    request = captured[0]
+    assert not request.has_header("User-agent")
 
 
 @pytest.mark.parametrize(
