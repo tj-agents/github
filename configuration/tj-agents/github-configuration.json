@@ -1,50 +1,15 @@
 {
   "schema_version": 1,
   "owner": "tj-agents",
+  "bot_identity": {
+    "enabled": false,
+    "except": [
+      "learning"
+    ]
+  },
   "repositories": {
     "github-actions": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -147,47 +112,6 @@
     },
     "agent": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -284,47 +208,6 @@
     },
     "agent-store": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -415,47 +298,6 @@
     },
     "azure": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -561,47 +403,6 @@
     },
     "cli": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -704,47 +505,6 @@
     },
     "core": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -832,42 +592,6 @@
     },
     "cpp": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -929,42 +653,6 @@
     },
     "docs": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",
@@ -1006,47 +694,6 @@
     },
     "dotnet": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1143,47 +790,6 @@
     },
     "github": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1290,42 +896,6 @@
     },
     "marketplace": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1411,47 +981,6 @@
     },
     "nvim": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1548,47 +1077,6 @@
     },
     "personal": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1685,47 +1173,6 @@
     },
     "python": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1822,47 +1269,6 @@
     },
     "react": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -1959,47 +1365,6 @@
     },
     "rust": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -2096,52 +1461,6 @@
     },
     "template": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 0,
-              "actor_type": "DeployKey",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -2243,47 +1562,6 @@
     },
     "work": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -2380,47 +1658,6 @@
     },
     "work-items": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 5548045,
-              "actor_type": "Integration",
-              "bypass_mode": "always"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "renovate-branches": {
           "target": "branch",
           "enforcement": "active",
@@ -2613,42 +1850,6 @@
     },
     "renovate-config": {
       "rulesets": {
-        "merge-policy-review": {
-          "target": "branch",
-          "enforcement": "active",
-          "conditions": {
-            "ref_name": {
-              "include": [
-                "~DEFAULT_BRANCH"
-              ],
-              "exclude": []
-            }
-          },
-          "bypass_actors": [
-            {
-              "actor_id": 5,
-              "actor_type": "RepositoryRole",
-              "bypass_mode": "pull_request"
-            },
-            {
-              "actor_id": 2740,
-              "actor_type": "Integration",
-              "bypass_mode": "pull_request"
-            }
-          ],
-          "rules": [
-            {
-              "type": "pull_request",
-              "parameters": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews_on_push": false,
-                "require_code_owner_review": false,
-                "require_last_push_approval": false,
-                "required_review_thread_resolution": false
-              }
-            }
-          ]
-        },
         "merge-policy": {
           "target": "branch",
           "enforcement": "active",

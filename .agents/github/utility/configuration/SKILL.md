@@ -70,6 +70,17 @@ mapping each secret name to a source the workspace's sensitive `secret_values` s
 }
 ```
 
+Approval gating follows one owner switch, `bot_identity`. With `enabled` true, agents act through the
+owner's bot, so every repository not in `except` gets a generated `merge-policy-review` ruleset requiring one
+approval from the owner on the default branch. Its bypass actors are that repository's `merge-policy` actors
+plus Renovate, which never waits for approval. With it false, the default, pull requests merge on green and
+the next apply removes those rulesets. Required status checks in `merge-policy` stay enforced either way. A
+covered repository may not declare its own `merge-policy-review`.
+
+```json
+"bot_identity": { "enabled": false, "except": ["learning"] }
+```
+
 Secret values live only in Infisical. `secrets` names the owner's Infisical project and GitHub App connection;
 each sync pushes one Infisical folder to the owner's organization (only the listed `repositories`), one
 `repository` or one `repository_environment`. Syncs never delete GitHub secrets, and agents never see values.
