@@ -4,7 +4,7 @@ mock_provider "infisical" {}
 variables {
   declaration = {
     owner     = "owner"
-    approvals = { required = true, except = ["ungated"] }
+    bot_identity = { enabled = true, except = ["ungated"] }
     repositories = {
       gated = {
         rulesets = {
@@ -32,7 +32,7 @@ variables {
   }
 }
 
-run "approvals_gate_covered_repositories_and_exempt_renovate" {
+run "bot_identity_gates_covered_repositories_and_exempts_renovate" {
   command = plan
 
   assert {
@@ -62,13 +62,13 @@ run "approvals_gate_covered_repositories_and_exempt_renovate" {
   }
 }
 
-run "approvals_off_generates_no_review_rulesets" {
+run "without_bot_identity_pull_requests_merge_on_green" {
   command = plan
 
   variables {
     declaration = {
       owner     = "owner"
-      approvals = { required = false }
+      bot_identity = { enabled = false }
       repositories = {
         gated = {
           rulesets = {
@@ -87,6 +87,6 @@ run "approvals_off_generates_no_review_rulesets" {
 
   assert {
     condition     = keys(github_repository_ruleset.this) == ["gated/merge-policy"]
-    error_message = "With approvals off only the declared merge policy remains."
+    error_message = "Without bot identity only the declared merge policy remains."
   }
 }

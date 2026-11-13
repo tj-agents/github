@@ -2,10 +2,11 @@ locals {
   flag_rules = ["creation", "update", "deletion", "non_fast_forward", "required_linear_history", "required_signatures"]
   rule_types = concat(local.flag_rules, ["pull_request", "required_status_checks", "merge_queue"])
 
-  # Gated approvals are one switch per owner. Each covered repository gets a one-approval ruleset whose
-  # bypass actors are its merge-policy actors plus Renovate, which never waits for an approval.
+  # With bot identity enabled, agents act through the owner's bot, so each covered repository requires one
+  # approval from its owner; the bypass actors are its merge-policy actors plus Renovate, which never waits.
+  # Disabled, pull requests merge on green.
   renovate_app_id = 2740
-  approvals       = try(var.declaration.approvals, { required = false })
+  bot_identity    = try(var.declaration.bot_identity, { enabled = false })
   approval_rulesets = {
     for repository, settings in try(var.declaration.repositories, {}) : "${repository}/merge-policy-review" => {
       repository = repository
@@ -21,7 +22,7 @@ locals {
         )
         rules = [{ type = "pull_request", parameters = { required_approving_review_count = 1 } }]
       }
-    } if local.approvals.required && !contains(try(local.approvals.except, []), repository)
+    } if local.bot_identity.enabled && !contains(try(local.bot_identity.except, []), repository)
   }
 
   rulesets = merge(local.approval_rulesets, [

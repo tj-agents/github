@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "owner": "tj-agents",
-  "approvals": {
-    "required": true,
+  "bot_identity": {
+    "enabled": false,
     "except": [
       "learning"
     ]
