@@ -138,12 +138,12 @@ def _write_imports(root: Path, owner_rulesets: dict[str, int]) -> None:
 
 
 def generated(document: dict[str, Any], key: str) -> bool:
-    approvals = document.get("approvals", {})
+    bot_identity = document.get("bot_identity", {})
     repository, name = key.split("/", 1)
     return bool(
-        approvals.get("required", False)
+        bot_identity.get("enabled", False)
         and name == configuration_declaration.APPROVAL_RULESET
-        and repository not in approvals.get("except", [])
+        and repository not in bot_identity.get("except", [])
     )
 
 
