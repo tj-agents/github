@@ -403,7 +403,6 @@ class GitHubAPI:
             headers={
                 "Authorization": "Bearer " + self.token,
                 "Accept": "application/vnd.github+json",
-                "User-Agent": "tj-agents-github-access",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
