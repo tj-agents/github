@@ -291,7 +291,7 @@ def marker(request: Mapping[str, Any]) -> tuple[str, str]:
     fingerprint = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    prefix = f"<!-- tj-agents-github:{request['request_id']}:"
+    prefix = f"<!-- request:{request['request_id']}:"
     return prefix, f"{prefix}{fingerprint} -->"
 
 
