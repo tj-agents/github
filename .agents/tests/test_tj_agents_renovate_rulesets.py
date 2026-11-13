@@ -41,14 +41,14 @@ def required_approvals(ruleset: dict[str, Any]) -> int:
 
 
 def test_declared_approval_rulesets_never_make_renovate_wait() -> None:
-    gated = [entry for entry in rulesets() if required_approvals(entry[2])]
+    waiting = []
+    for repository, name, ruleset in rulesets():
+        types = {rule.get("type") for rule in ruleset["rules"]}
+        exempt = renovate_bypasses(ruleset) and types == {"pull_request"}
+        if required_approvals(ruleset) and not exempt:
+            waiting.append(f"{repository}/{name}")
 
-    assert [
-        f"{repository}/{name}"
-        for repository, name, ruleset in gated
-        if not renovate_bypasses(ruleset)
-        or any(rule.get("type") != "pull_request" for rule in ruleset["rules"])
-    ] == []
+    assert waiting == []
 
 
 @pytest.mark.parametrize(
