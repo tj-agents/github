@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -676,6 +677,44 @@ def test_mcp_cache_binary_mismatch_fails_closed(tmp_path: Path) -> None:
     binary.write_bytes(b"binary")
     with pytest.raises(access_core.AccessError, match="mcp-install-missing"):
         github_mcp_install.check(tmp_path, release)
+
+
+class _FakeDownloadResponse:
+    def __enter__(self) -> "_FakeDownloadResponse":
+        return self
+
+    def __exit__(self, *values: object) -> None:
+        return None
+
+    @staticmethod
+    def read(size: int) -> bytes:
+        return b""
+
+
+class _FakeDownloadOpener:
+    def __init__(self, captured: list[urllib.request.Request]) -> None:
+        self.captured = captured
+
+    def open(
+        self, request: urllib.request.Request, timeout: float
+    ) -> _FakeDownloadResponse:
+        self.captured.append(request)
+        return _FakeDownloadResponse()
+
+
+def test_mcp_download_sends_no_tool_identifying_user_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[urllib.request.Request] = []
+    monkeypatch.setattr(
+        urllib.request,
+        "build_opener",
+        lambda *handlers: _FakeDownloadOpener(captured),
+    )
+    destination = tmp_path / "archive.zip"
+    github_mcp_install._download(destination, github_mcp_release.WINDOWS_X64)
+    assert len(captured) == 1
+    assert not captured[0].has_header("User-agent")
 
 
 def test_mcp_call_uses_current_credential_and_pinned_child(
