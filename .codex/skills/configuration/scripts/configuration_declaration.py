@@ -105,6 +105,7 @@ def _environment(where: str, value: Any) -> None:
 
 
 SYNC_SCOPES = {"organization", "repository", "repository-environment"}
+APPROVAL_RULESET = "merge-policy-review"
 
 
 def _secrets(value: Any) -> None:
@@ -149,14 +150,45 @@ def _repositories(value: Any) -> None:
             _ruleset(f"{where}.rulesets.{name}", ruleset)
 
 
+def _bot_identity(value: Any, repositories: dict[str, Any]) -> None:
+    body = _object(value, "bot_identity")
+    _keys(body, {"enabled", "except"}, "bot_identity")
+    if not isinstance(body.get("enabled"), bool):
+        raise DeclarationError("bot_identity.enabled must be true or false")
+    excepted = body.get("except", [])
+    if not isinstance(excepted, list) or not all(
+        repository in repositories for repository in excepted
+    ):
+        raise DeclarationError("bot_identity.except must list declared repositories")
+    if not body["enabled"]:
+        return
+    for repository, settings in repositories.items():
+        if repository not in excepted and APPROVAL_RULESET in settings.get(
+            "rulesets", {}
+        ):
+            raise DeclarationError(
+                f"repositories.{repository}.rulesets.{APPROVAL_RULESET} is generated "
+                "by bot_identity; remove it or except the repository"
+            )
+
+
 def parse(document: Any) -> Declaration:
     root = _object(document, "declaration")
     _keys(
         root,
-        {"schema_version", "owner", "packages", "repositories", "secrets"},
+        {
+            "schema_version",
+            "owner",
+            "bot_identity",
+            "packages",
+            "repositories",
+            "secrets",
+        },
         "declaration",
     )
     _repositories(root.get("repositories", {}))
+    if "bot_identity" in root:
+        _bot_identity(root["bot_identity"], root.get("repositories", {}))
     if "secrets" in root:
         _secrets(root["secrets"])
     if root.get("schema_version") != SCHEMA_VERSION:

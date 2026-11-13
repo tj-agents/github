@@ -2,7 +2,30 @@ locals {
   flag_rules = ["creation", "update", "deletion", "non_fast_forward", "required_linear_history", "required_signatures"]
   rule_types = concat(local.flag_rules, ["pull_request", "required_status_checks", "merge_queue"])
 
-  rulesets = merge([
+  # With bot identity enabled, agents act through the owner's bot, so each covered repository requires one
+  # approval from its owner; the bypass actors are its merge-policy actors plus Renovate, which never waits.
+  # Disabled, pull requests merge on green.
+  renovate_app_id = 2740
+  bot_identity    = try(var.declaration.bot_identity, { enabled = false })
+  approval_rulesets = {
+    for repository, settings in try(var.declaration.repositories, {}) : "${repository}/merge-policy-review" => {
+      repository = repository
+      name       = "merge-policy-review"
+      types      = ["pull_request"]
+      ruleset = {
+        target      = "branch"
+        enforcement = "active"
+        conditions  = { ref_name = { include = ["~DEFAULT_BRANCH"], exclude = [] } }
+        bypass_actors = concat(
+          try(settings.rulesets["merge-policy"].bypass_actors, []),
+          [{ actor_id = local.renovate_app_id, actor_type = "Integration", bypass_mode = "pull_request" }],
+        )
+        rules = [{ type = "pull_request", parameters = { required_approving_review_count = 1 } }]
+      }
+    } if local.bot_identity.enabled && !contains(try(local.bot_identity.except, []), repository)
+  }
+
+  rulesets = merge(local.approval_rulesets, [
     for repository, settings in try(var.declaration.repositories, {}) : {
       for name, ruleset in try(settings.rulesets, {}) : "${repository}/${name}" => {
         repository = repository
