@@ -176,7 +176,14 @@ def parse(document: Any) -> Declaration:
     root = _object(document, "declaration")
     _keys(
         root,
-        {"schema_version", "owner", "bot_identity", "packages", "repositories", "secrets"},
+        {
+            "schema_version",
+            "owner",
+            "bot_identity",
+            "packages",
+            "repositories",
+            "secrets",
+        },
         "declaration",
     )
     _repositories(root.get("repositories", {}))
