@@ -1,8 +1,10 @@
 import json
 import subprocess
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from github_collaboration import GhAPI, GitHubError, execute, main, validate
@@ -12,6 +14,46 @@ PULL = f"{ROOT}/pulls/42"
 ISSUE = f"{ROOT}/issues/42"
 HEAD = "a" * 40
 ACTOR = "test-agent[bot]"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _package_name() -> str:
+    pyproject = tomllib.loads(
+        (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    name = pyproject["project"]["name"]
+    assert isinstance(name, str)
+    return name
+
+
+def _remote_owner_and_repository() -> tuple[str, str]:
+    remote = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    remote = remote.removesuffix(".git")
+    path = (
+        urlsplit(remote).path.lstrip("/") if "://" in remote else remote.split(":")[-1]
+    )
+    owner, repository = path.rsplit("/", 1)
+    return owner, repository
+
+
+def _tool_identity_terms() -> set[str]:
+    owner, repository = _remote_owner_and_repository()
+    package = _package_name()
+    return {
+        owner,
+        repository,
+        package,
+        f"{owner}-{package}",
+        f"{owner}/{package}",
+        f"{owner}-{repository}",
+        f"{owner}/{repository}",
+    }
 
 
 class FakeAPI:
@@ -127,6 +169,16 @@ def test_comment_preserves_body_and_returns_only_receipt(
     assert "body" not in result
     assert api.posts[0]["body"].startswith(request_data["body"] + "\n\n<!--")
     assert len(api.posts) == 1
+
+
+def test_posted_marker_names_no_tool_identity(
+    api: FakeAPI,
+    request_data: dict[str, Any],
+) -> None:
+    execute(api, request_data)
+    body = api.posts[0]["body"].lower()
+    for term in _tool_identity_terms():
+        assert term.lower() not in body
 
 
 def test_identical_request_reuses_remote_comment(
