@@ -1,10 +1,13 @@
+import ctypes
 import os
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from pathlib import Path
+from ctypes import wintypes
+from pathlib import Path, PurePath
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
@@ -44,7 +47,7 @@ def _command_lines() -> list[tuple[int, str]]:
     processes = []
     for entry in Path("/proc").iterdir():
         try:
-            command = (entry / "cmdline").read_bytes().replace(b"\0", b" ")
+            command = (entry / "cmdline").read_bytes()
         except OSError:
             continue
         if entry.name.isdigit():
@@ -52,9 +55,54 @@ def _command_lines() -> list[tuple[int, str]]:
     return processes
 
 
-def _profile_processes(profile: Path) -> list[int]:
-    marker = str(profile).lower()
-    return [pid for pid, command in _command_lines() if marker in command.lower()]
+def _windows_arguments(command: str) -> list[str]:
+    if sys.platform == "win32":
+        count = ctypes.c_int()
+        parse = ctypes.windll.shell32.CommandLineToArgvW
+        parse.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
+        parse.restype = ctypes.POINTER(wintypes.LPWSTR)
+        release = ctypes.windll.kernel32.LocalFree
+        release.argtypes = [wintypes.HLOCAL]
+        release.restype = wintypes.HLOCAL
+        arguments = parse(command, ctypes.byref(count))
+        if not arguments:
+            raise ctypes.WinError()
+        try:
+            return [arguments[index] for index in range(count.value)]
+        finally:
+            release(ctypes.cast(arguments, wintypes.HLOCAL))
+    else:
+        raise OSError("Windows command-line parsing requires Windows")
+
+
+def _profile_processes(profile: PurePath) -> list[int]:
+    marker = profile.as_posix().rstrip("/")
+    processes = []
+    for pid, command in _command_lines():
+        arguments = (
+            _windows_arguments(command) if os.name == "nt" else command.split("\0")
+        )
+        values = [
+            item.removeprefix("--user-data-dir=")
+            for item in arguments
+            if item.startswith("--user-data-dir=")
+        ]
+        values.extend(
+            arguments[index + 1]
+            for index, item in enumerate(arguments[:-1])
+            if item == "--user-data-dir"
+        )
+        for value in values:
+            value = value.rstrip("/")
+            if os.name == "nt":
+                value = value.replace("\\", "/").rstrip("/").casefold()
+                expected = marker.casefold()
+            else:
+                expected = marker
+            if value == expected:
+                processes.append(pid)
+                break
+    return processes
 
 
 def _release(profile: Path) -> None:
