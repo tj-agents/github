@@ -1,6 +1,6 @@
 ---
 name: collaboration
-description: Read compact GitHub issue or PR context, post conversation comments, submit inline review batches and reply to review threads. Use when interacting with an issue, pull request or review discussion on GitHub.
+description: Use when reading GitHub issue or PR context, posting an authorized comment, submitting an inline review batch or replying to a thread.
 kind: utility
 domain: github
 profile: core
