@@ -4,9 +4,9 @@ mock_provider "infisical" {}
 variables {
   declaration = {
     owner     = "owner"
-    bot_identity = { enabled = true, except = ["ungated"] }
     repositories = {
       gated = {
+        requires_approval = true
         rulesets = {
           "merge-policy" = {
             target        = "branch"
@@ -18,6 +18,7 @@ variables {
         }
       }
       ungated = {
+        requires_approval = false
         rulesets = {
           "merge-policy" = {
             target        = "branch"
@@ -32,7 +33,7 @@ variables {
   }
 }
 
-run "bot_identity_gates_covered_repositories_and_exempts_renovate" {
+run "approval_is_opt_in_and_has_no_bypass" {
   command = plan
 
   assert {
@@ -41,19 +42,8 @@ run "bot_identity_gates_covered_repositories_and_exempts_renovate" {
   }
 
   assert {
-    condition = anytrue([
-      for actor in github_repository_ruleset.this["gated/merge-policy-review"].bypass_actors :
-      actor.actor_id == 2740 && actor.actor_type == "Integration" && actor.bypass_mode == "pull_request"
-    ])
-    error_message = "Renovate must never wait for an approval."
-  }
-
-  assert {
-    condition = anytrue([
-      for actor in github_repository_ruleset.this["gated/merge-policy-review"].bypass_actors :
-      actor.actor_id == 5 && actor.actor_type == "RepositoryRole"
-    ])
-    error_message = "Actors who may bypass the merge policy may also bypass approval."
+    condition     = length(github_repository_ruleset.this["gated/merge-policy-review"].bypass_actors) == 0
+    error_message = "No actor may bypass an explicitly enabled approval."
   }
 
   assert {
@@ -62,13 +52,12 @@ run "bot_identity_gates_covered_repositories_and_exempts_renovate" {
   }
 }
 
-run "without_bot_identity_pull_requests_merge_on_green" {
+run "without_approval_pull_requests_merge_on_green" {
   command = plan
 
   variables {
     declaration = {
       owner     = "owner"
-      bot_identity = { enabled = false }
       repositories = {
         gated = {
           rulesets = {
@@ -87,6 +76,6 @@ run "without_bot_identity_pull_requests_merge_on_green" {
 
   assert {
     condition     = keys(github_repository_ruleset.this) == ["gated/merge-policy"]
-    error_message = "Without bot identity only the declared merge policy remains."
+    error_message = "Without an approval opt-in only the declared merge policy remains."
   }
 }
