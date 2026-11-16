@@ -5,7 +5,7 @@ from typing import Protocol
 
 from gate_error import GateError
 
-MARKER = "tj-agents github access gate"
+MARKER = "github@tj-agents access gate"
 
 
 class PrivateStateError(GateError):

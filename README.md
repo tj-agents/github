@@ -76,12 +76,12 @@ directory must come before the real `gh` on `PATH`; the shim finds the real `gh`
 own launchers. Setup then appends a marked block to the end of your global Git configuration:
 
 ```text
-# >>> tj-agents github access gate (written by setup; do not edit) >>>
+# >>> github@tj-agents access gate (written by setup; do not edit) >>>
 [credential "https://github.com"]
 	helper =
 	helper = "!<python> -B ~/.agents-state/github-gate/runtime/github_gate.py credential"
 	helper = "<each github.com helper your configuration already had, in order>"
-# <<< tj-agents github access gate <<<
+# <<< github@tj-agents access gate <<<
 ```
 
 The block resets the github.com helper list, runs the gate first, then re-adds the helpers that

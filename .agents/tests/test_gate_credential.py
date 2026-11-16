@@ -173,3 +173,91 @@ def test_storing_the_app_credential_gives_the_humans_helpers_no_password(
     for entry in seen:
         assert "password=" not in entry["input"]
         assert "username=x-access-token" in entry["input"]
+
+
+SERVER = """\
+import base64, http.server, sys
+from pathlib import Path
+
+ACCEPTED = "Basic " + base64.b64encode(b"probe:secret").decode()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *arguments):
+        pass
+
+    def do_GET(self):
+        if self.headers.get("Authorization") != ACCEPTED:
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="probe"')
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body = b"1111111111111111111111111111111111111111\\trefs/heads/main\\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+Path(sys.argv[1]).write_text(str(server.server_port), encoding="utf-8")
+server.serve_forever()
+"""
+PROBE_HELPER = """\
+import os, sys
+from pathlib import Path
+
+if sys.argv[1] == "get":
+    sys.stdin.read()
+    Path(os.environ["GATE_TEST_CWD"]).write_text(os.getcwd(), encoding="utf-8")
+    sys.stdout.write("username=probe\\npassword=secret\\n")
+"""
+
+
+def test_git_transport_runs_helpers_inside_the_worktree_it_fetches_for(
+    sandbox: Sandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = sandbox.repository("probed")
+    sandbox.git(repository, "branch", "feature")
+    linked = sandbox.root / "linked"
+    sandbox.git(repository, "worktree", "add", "-q", str(linked), "feature")
+    nested = linked / "src" / "deep"
+    nested.mkdir(parents=True)
+    (sandbox.root / "server.py").write_text(SERVER, encoding="utf-8")
+    helper = sandbox.root / "probe_helper.py"
+    helper.write_text(PROBE_HELPER, encoding="utf-8")
+    recorded = sandbox.root / "cwd.txt"
+    monkeypatch.setenv("GATE_TEST_CWD", str(recorded))
+    port_file = sandbox.root / "port.txt"
+    with subprocess.Popen(
+        [sys.executable, "-B", str(sandbox.root / "server.py"), str(port_file)]
+    ) as server:
+        try:
+            for _ in range(200):
+                if port_file.is_file() and port_file.read_text(encoding="utf-8"):
+                    break
+                subprocess.run(
+                    [sys.executable, "-c", "import time; time.sleep(0.05)"],
+                    check=True,
+                )
+            port = port_file.read_text(encoding="utf-8")
+            python = Path(sys.executable).resolve().as_posix()
+            result = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    f"credential.helper=!'{python}' -B '{helper.as_posix()}'",
+                    "ls-remote",
+                    f"http://127.0.0.1:{port}/sample-org/core.git",
+                ],
+                cwd=nested,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            server.terminate()
+    assert result.returncode == 0, result.stderr
+    assert Path(recorded.read_text(encoding="utf-8")).resolve() == linked.resolve()
