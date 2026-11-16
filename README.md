@@ -134,31 +134,34 @@ is needed. Create a new App in GitHub's settings, then enrol its key.
 ### Approving the App's pull requests
 
 The App opens pull requests; you approve them as yourself with `tj approve`, which `tj` runs
-through the `tj-approve` launcher setup installs. An agent hands you the line with the
-session it worked in:
+through the `tj-approve` launcher setup installs. After opening or readying a pull request, an
+agent links it to its session's work item and hands you the command with the pull request's
+link, following `cli:clip`'s handover rule:
 
 ```text
-tj approve --session claude:<session-id>
+tj approve
 ```
 
-It finds that session's work items in agent-store, including those of sessions and launches it
-started, and asks `tj item` for their pull requests. It keeps an open pull request only when its
-author is the App that the pull request's repository declares, read from GitHub (the
-repository's file on the base branch, then the owner's `.github` default). You must also not
-have approved its current head, unless a review from you is requested. It lists them, asks you
-to type `yes`, then approves each and arms squash auto-merge pinned to the approved head. It
-exits non-zero if any approval or auto-merge fails.
+It finds the session's work items in agent-store, including those of sessions and launches it
+started, and asks `tj item` for their pull requests. The session comes from the environment the
+command runs in; `--session <host>:<id>` names another one.
+
+It keeps an open pull request only when its author is the App that the pull request's
+repository declares, read from GitHub (the repository's file on the base branch, then the
+owner's `.github` default). You must also not have approved its current head, unless a review
+from you is requested. It lists them, asks you to type `yes`, then approves each and arms squash
+auto-merge pinned to the approved head. It exits non-zero if any approval or auto-merge fails.
 
 It always runs the real `gh`, never the gate's shim, with your own login. It removes
 `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `GH_TOKEN`, `GITHUB_TOKEN`,
 `GH_CONFIG_DIR` and every `GIT_CONFIG*` variable from the environment of each command it runs.
 Your reviewer identity is whatever `gh api user` reports.
 
-`tj approve` refuses to run unless its input is a terminal you can type into (on Windows, a
-console with a window). An agent's tool calls have no terminal, so an agent cannot approve its
-own work by running it. The `!` shell inside a Claude Code or Codex session is expected to have
-no terminal either, so run it in your own terminal with `--session`. Without `--session` it
-uses the agent session named by the terminal's own environment, if any.
+Agents are denied `tj approve` and `tj-approve` by their hosts. The plugin's harness manifest
+declares the rules (`claude_deny` and `codex_forbidden_prefix_rules`), and Agent writes them into
+each selecting repository's committed Claude and Codex settings. These are host permission rules,
+not an OS boundary around your account. `tj approve` also approves nothing until you type `yes`.
+If its input has no line to read, it stops with that reason.
 
 ### Limits
 

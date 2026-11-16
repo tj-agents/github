@@ -1,8 +1,9 @@
 """Approve, as yourself, the GitHub App's pull requests for an agent session's work.
 
-Run `tj approve` in your own terminal. It approves only open pull requests, linked to
-the session's work items, that the GitHub App their repository declares opened and
-that await your approval at their current head, then arms squash auto-merge.
+Only the human runs `tj approve`; agents are denied it by their hosts' permissions. It
+approves only open pull requests, linked to the session's work items, that the GitHub
+App their repository declares opened and that await your approval at their current
+head, after you type yes, then arms squash auto-merge.
 """
 
 from __future__ import annotations
@@ -18,15 +19,13 @@ import urllib.parse
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, TextIO, assert_never
+from typing import Any, Protocol, assert_never
 
 from gate_access import OWNER_REPOSITORY, decoded
 from gate_agent import AgentHost
 from gate_declaration import DECLARATION, AppAccess, HumanAccess, parse
 from gate_error import GateError
 from gate_gh import real_gh
-from gate_platform import Platform, SupportedPlatform
-from github_gate import PLATFORMS
 
 TIMEOUT_SECONDS = 30
 ITEM_TIMEOUT_SECONDS = 120
@@ -436,29 +435,19 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def interactive(stream: TextIO | None, platform: Platform) -> bool:
-    """Whether `stream` is a terminal a person types into; agents' tools have none."""
+def confirmation(question: str) -> str:
+    """Read the human's answer from standard input."""
     try:
-        descriptor = stream.fileno() if stream is not None else -1
-    except (OSError, ValueError):
-        return False
-    return descriptor >= 0 and platform.is_terminal(descriptor)
+        return input(question)
+    except (EOFError, RuntimeError) as error:
+        raise ApproveError(
+            "could not read your answer: standard input gave no line to type yes "
+            "into; nothing approved"
+        ) from error
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
-    try:
-        platform = PLATFORMS[SupportedPlatform(os.name)]
-    except ValueError:
-        print("tj approve: only Windows and POSIX are supported", file=sys.stderr)
-        return 2
-    if not interactive(sys.stdin, platform):
-        print(
-            "tj approve: approves as you, so it runs only in your own terminal; an "
-            "agent must hand it to you instead of running it. Nothing approved.",
-            file=sys.stderr,
-        )
-        return 2
     inherited = dict(os.environ)
     environment = human_environment(inherited)
     try:
@@ -469,7 +458,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             environment=environment,
             run=run_captured,
             out=print,
-            ask=input,
+            ask=confirmation,
         )
         return approve(approval, inherited, arguments.session)
     except (GateError, OSError) as error:

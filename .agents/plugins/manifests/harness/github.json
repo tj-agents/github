@@ -22,7 +22,67 @@
     },
     "permissions": {
       "claude_allow": [],
-      "codex_prefix_rules": []
+      "codex_prefix_rules": [],
+      "claude_deny": [
+        "Bash(tj approve:*)",
+        "Bash(tj-approve:*)",
+        "PowerShell(tj approve:*)",
+        "PowerShell(tj-approve:*)"
+      ],
+      "codex_forbidden_prefix_rules": [
+        {
+          "pattern": [
+            [
+              "tj",
+              "tj.exe"
+            ],
+            "approve"
+          ],
+          "justification": "tj approve approves pull requests as the human; only the human runs it, never an agent",
+          "match": [
+            [
+              "tj",
+              "approve"
+            ],
+            [
+              "tj.exe",
+              "approve",
+              "--session",
+              "codex:example"
+            ]
+          ],
+          "not_match": [
+            [
+              "tj",
+              "status"
+            ]
+          ]
+        },
+        {
+          "pattern": [
+            [
+              "tj-approve",
+              "tj-approve.cmd"
+            ]
+          ],
+          "justification": "tj approve approves pull requests as the human; only the human runs it, never an agent",
+          "match": [
+            [
+              "tj-approve"
+            ],
+            [
+              "tj-approve.cmd",
+              "--session",
+              "codex:example"
+            ]
+          ],
+          "not_match": [
+            [
+              "tj-status"
+            ]
+          ]
+        }
+      ]
     }
   }
 }

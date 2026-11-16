@@ -535,30 +535,29 @@ def test_a_human_cannot_impersonate_the_app_slug(author: dict[str, object]) -> N
     assert app_authored(details(FIRST), "sample-bot")
 
 
-@pytest.mark.parametrize("redirect", ["null", "pipe"])
-def test_redirected_stdin_is_not_a_terminal(redirect: str) -> None:
-    if redirect == "null":
-        with Path(os.devnull).open(encoding="utf-8") as null:
-            assert not github_approve.interactive(null, CURRENT_PLATFORM)
-        return
-    read, write = os.pipe()
-    try:
-        with os.fdopen(read, encoding="utf-8") as stream:
-            assert not github_approve.interactive(stream, CURRENT_PLATFORM)
-    finally:
-        os.close(write)
-
-
-def test_main_refuses_without_a_terminal_before_running_anything(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    def forbidden(environment: Mapping[str, str]) -> Path:
-        raise AssertionError("no tool may run without a terminal")
-
+def test_confirmation_reads_one_typed_line(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO("yes\n"))
-    monkeypatch.setattr(github_approve, "real_gh", forbidden)
-    assert github_approve.main([]) == 2
-    assert "runs only in your own terminal" in capsys.readouterr().err
+    assert github_approve.confirmation("Approve? ") == "yes"
+
+
+def test_a_closed_input_stops_before_any_approval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    tools = tools_with_work()
+    approval = Approval(
+        gh="gh",
+        tj="tj",
+        agent_store="agent-store",
+        environment=human_environment(AGENT),
+        run=tools,
+        out=lambda line: None,
+        ask=github_approve.confirmation,
+    )
+    with pytest.raises(ApproveError, match="could not read your answer"):
+        approve(approval, AGENT, None)
+    assert tools.commands("gh", "pr", "review") == []
+    assert tools.commands("gh", "pr", "merge") == []
 
 
 def test_main_uses_the_real_gh_after_the_gate_and_a_human_environment(
@@ -590,7 +589,6 @@ def test_main_uses_the_real_gh_after_the_gate_and_a_human_environment(
         seen.append((approval, inherited, handle))
         return 0
 
-    monkeypatch.setattr(github_approve, "interactive", lambda stream, platform: True)
     monkeypatch.setattr(github_approve, "approve", captured)
     assert github_approve.main(["--session", "codex:chosen"]) == 0
     [(approval, inherited, handle)] = seen
@@ -600,7 +598,7 @@ def test_main_uses_the_real_gh_after_the_gate_and_a_human_environment(
     assert handle == "codex:chosen"
 
 
-def test_setup_installs_a_tj_approve_launcher_that_refuses_agents(
+def test_setup_installs_a_tj_approve_launcher_tj_can_run(
     sandbox: Sandbox, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("FORCE_COLOR", raising=False)
@@ -616,12 +614,3 @@ def test_setup_installs_a_tj_approve_launcher_that_refuses_agents(
     )
     assert shown.returncode == 0, shown.stderr
     assert "usage: tj approve" in shown.stdout
-    refused = subprocess.run(
-        [str(launcher)],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert refused.returncode == 2
-    assert "runs only in your own terminal" in refused.stderr
