@@ -149,8 +149,10 @@ command runs in; `--session <host>:<id>` names another one.
 It keeps an open pull request only when its author is the App that the pull request's
 repository declares, read from GitHub (the repository's file on the base branch, then the
 owner's `.github` default). You must also not have approved its current head, unless a review
-from you is requested. It lists them, asks you to type `yes`, then approves each and arms squash
-auto-merge pinned to the approved head. It exits non-zero if any approval or auto-merge fails.
+from you is requested. It lists them, then approves each and arms squash auto-merge pinned to
+the approved head, printing each pull request it approved and its auto-merge result. It asks
+nothing, so it works from a session's `!` shell. It exits non-zero if any approval or auto-merge
+fails.
 
 It always runs the real `gh`, never the gate's shim, with your own login. It removes
 `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `GH_TOKEN`, `GITHUB_TOKEN`,
@@ -159,9 +161,8 @@ Your reviewer identity is whatever `gh api user` reports.
 
 Agents are denied `tj approve` and `tj-approve` by their hosts. The plugin's harness manifest
 declares the rules (`claude_deny` and `codex_forbidden_prefix_rules`), and Agent writes them into
-each selecting repository's committed Claude and Codex settings. These are host permission rules,
-not an OS boundary around your account. `tj approve` also approves nothing until you type `yes`.
-If its input has no line to read, it stops with that reason.
+each selecting repository's committed Claude and Codex settings. They are the only guard: they
+are host permission rules, not an OS boundary around your account.
 
 ### Limits
 

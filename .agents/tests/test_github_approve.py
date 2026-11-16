@@ -1,9 +1,7 @@
 import base64
-import io
 import json
 import os
 import subprocess
-import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -235,15 +233,8 @@ def run_approval(
     tools: FakeTools,
     inherited: Mapping[str, str] | None = None,
     handle: str | None = None,
-    answer: str = "yes",
-) -> tuple[int, list[str], list[str]]:
+) -> tuple[int, list[str]]:
     lines: list[str] = []
-    questions: list[str] = []
-
-    def ask(question: str) -> str:
-        questions.append(question)
-        return answer
-
     approval = Approval(
         gh="gh",
         tj="tj",
@@ -251,15 +242,14 @@ def run_approval(
         environment=human_environment(inherited or AGENT),
         run=tools,
         out=lines.append,
-        ask=ask,
     )
     code = approve(approval, inherited or AGENT, handle)
-    return code, lines, questions
+    return code, lines
 
 
-def test_eligible_prs_are_listed_confirmed_approved_and_auto_merged() -> None:
+def test_eligible_prs_are_listed_approved_and_auto_merged() -> None:
     tools = tools_with_work()
-    code, lines, questions = run_approval(tools)
+    code, lines = run_approval(tools)
     assert code == 0
     assert lines == [
         "sample-org/core#1  Change 1",
@@ -271,9 +261,6 @@ def test_eligible_prs_are_listed_confirmed_approved_and_auto_merged() -> None:
         "merging sample-org/notes#2 when its checks pass",
         "approved sample-org/core#4",
         "merging sample-org/core#4 when its checks pass",
-    ]
-    assert questions == [
-        "Approve 3 pull request(s) as sample-human? Type yes to approve: "
     ]
     assert tools.approvals() == [FIRST, SECOND, STALE]
     assert tools.commands("gh", "pr", "merge") == [
@@ -360,25 +347,16 @@ def test_only_open_prs_by_the_declared_app_awaiting_you_are_kept() -> None:
 def test_a_repository_and_owner_without_declarations_have_nothing_to_approve() -> None:
     tools = tools_with_work()
     tools.files = {}
-    code, lines, _ = run_approval(tools)
+    code, lines = run_approval(tools)
     assert (code, lines) == (0, ["No pull requests await your approval."])
     assert tools.approvals() == []
-
-
-def test_declining_the_confirmation_approves_nothing() -> None:
-    tools = tools_with_work()
-    code, lines, _ = run_approval(tools, answer="y")
-    assert code == 0
-    assert lines[-1] == "Nothing approved."
-    assert tools.commands("gh", "pr", "review") == []
-    assert tools.commands("gh", "pr", "merge") == []
 
 
 def test_failed_approvals_and_auto_merges_fail_the_run_after_every_pr() -> None:
     tools = tools_with_work()
     tools.failing = (SECOND,)
     tools.unmergeable = (FIRST,)
-    code, lines, _ = run_approval(tools)
+    code, lines = run_approval(tools)
     assert code == 1
     assert tools.approvals() == [FIRST, SECOND, STALE]
     assert "not merging sample-org/core#1: Auto merge off" in lines
@@ -482,7 +460,7 @@ def test_descendants_walk_unlinked_ancestors_and_ignore_unrelated_cycles() -> No
             launch("unrelated", parent="codex:stranger", item=14),
         ],
     )
-    approval = Approval("gh", "tj", "agent-store", {}, tools, print, input)
+    approval = Approval("gh", "tj", "agent-store", {}, tools, print)
     assert set(descendant_items(approval, "codex:root")) == {
         ref(10)["ref"],
         ref(11)["ref"],
@@ -510,7 +488,7 @@ def test_no_session_or_nothing_linked_approves_nothing(
 ) -> None:
     tools = tools_with_work()
     tools.sessions = sessions
-    code, lines, _ = run_approval(tools, inherited)
+    code, lines = run_approval(tools, inherited)
     assert (code, lines) == (0, [message])
     assert not [command for command, _, _ in tools.calls if command[0] != "agent-store"]
 
@@ -533,31 +511,6 @@ def test_a_human_cannot_impersonate_the_app_slug(author: dict[str, object]) -> N
     pull_author.update(author)
     assert not app_authored(pull, "sample-bot")
     assert app_authored(details(FIRST), "sample-bot")
-
-
-def test_confirmation_reads_one_typed_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "stdin", io.StringIO("yes\n"))
-    assert github_approve.confirmation("Approve? ") == "yes"
-
-
-def test_a_closed_input_stops_before_any_approval(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    tools = tools_with_work()
-    approval = Approval(
-        gh="gh",
-        tj="tj",
-        agent_store="agent-store",
-        environment=human_environment(AGENT),
-        run=tools,
-        out=lambda line: None,
-        ask=github_approve.confirmation,
-    )
-    with pytest.raises(ApproveError, match="could not read your answer"):
-        approve(approval, AGENT, None)
-    assert tools.commands("gh", "pr", "review") == []
-    assert tools.commands("gh", "pr", "merge") == []
 
 
 def test_main_uses_the_real_gh_after_the_gate_and_a_human_environment(
