@@ -31,17 +31,40 @@ The access gate decides, per command, whose GitHub credentials an agent uses. It
 tooling, not a skill: `tj install` runs its setup for any repository that selects
 `github@tj-agents`, and nothing in a session has to load or invoke it.
 
-A repository opts in by committing `.agents/github-access.json`. Without the file, access is
-`human`. Only the version committed at `HEAD` counts, so an untracked or uncommitted file is
-ignored and each worktree reads its own commit.
+Access is declared in `.agents/github-access.json`, in one of two forms:
 
 ```json
 {"schema_version": 1, "method": "human"}
 {"schema_version": 1, "method": "app", "app": "<github-app-slug>"}
 ```
 
-The fields must match exactly. Any other method or field makes the declaration invalid, and an
-invalid committed declaration stops agents in that repository without changing what humans get.
+For an agent, the first of these that exists decides:
+
+1. **The repository's own file**, committed at `HEAD`. An untracked or uncommitted file is
+   ignored, and each worktree reads its own commit. Commit `{"method": "human"}` to opt one
+   repository out of its owner's default.
+2. **The owner's default**: the same file on the default branch of the `<owner>/.github`
+   repository. The owner is the account of the repository's `origin` remote on github.com; a
+   repository without one skips this step.
+3. Otherwise, `human`.
+
+```text
+tj-agents/.github   .agents/github-access.json   {"schema_version": 1, "method": "app", "app": "sample-bot"}
+tj-agents/notes     (no file)                     agents act as sample-bot
+tj-agents/sandbox   {"method": "human", ...}      agents use the human's login
+```
+
+The gate reads an owner's default from GitHub with the installation token of an App this
+machine has enrolled and installed on that owner. Otherwise it reads without credentials, so a
+private `.github` repository is visible only through such an App. It never uses the human's
+credentials. A 404 means the owner has no default. The result is cached in the gate's state
+directory for 10 minutes; edits take effect after that. If the default cannot be read, agents
+in that owner's repositories stop with the reason until it can.
+
+The fields must match exactly. Any other method or field makes a declaration invalid. An invalid
+repository file or owner default stops agents there, and an `app` default naming an App this
+machine has not enrolled stops them with the onboarding command. Humans are never affected and
+never cause an owner lookup.
 
 A process is an agent when its environment carries a host's session marker: `CLAUDECODE` or
 `CLAUDE_CODE_SESSION_ID` from Claude Code, or `CODEX_THREAD_ID` from Codex. Every other process
@@ -50,15 +73,15 @@ is a human. A human always reaches the real `gh` and their own Git credential he
 | Who and where | `gh` | Git over `https://github.com` |
 | --- | --- | --- |
 | Human, anywhere | Real `gh`, environment unchanged | The human's own helpers |
-| Agent, no declaration or `human` | Real `gh`, environment unchanged | The human's own helpers |
-| Agent, `app` | Real `gh` with `GH_TOKEN` set to the App's installation token | The App's installation token |
+| Agent, access resolves to `human` | Real `gh`, environment unchanged | The human's own helpers |
+| Agent, access resolves to `app` | Real `gh` with `GH_TOKEN` set to the App's installation token | The App's installation token |
 
-In an `app` repository the target account comes from the command's `--repo`, URL, API path or
+When access resolves to `app`, the target account comes from the command's `--repo`, URL, API path or
 `--owner`/`--org`, then `GH_REPO`, then the `origin` remote. The App covers exactly the accounts
 it is installed on, read from GitHub. An agent's command is refused when it targets an account
 the App does not cover, names two accounts, targets another host, or uses `gh auth` for anything
 but `gh auth status`. When Git cannot be answered as the App, the helper tells Git to quit. An
-agent in an `app` repository never falls back to the human's credentials.
+agent whose access resolves to `app` never falls back to the human's credentials.
 
 ### Machine setup
 
@@ -88,8 +111,9 @@ The block resets the github.com helper list, runs the gate first, then re-adds t
 already applied to github.com. Setup is idempotent, prints what it changed, and writes nothing to
 Claude or Codex settings. `setup --check` changes nothing. It reports a stale runtime, shim or
 block, a `gh` on `PATH` that is not the shim, and configuration added after the block. It also
-reports changes to your github.com helpers and an App the current repository declares that this
-machine has not enrolled.
+reports changes to your github.com helpers and an App the current repository's committed file
+names that this machine has not enrolled. It does not read owner defaults, so it works offline;
+agents meet an unenrolled owner-default App with the onboarding command instead.
 
 ### Onboarding an App
 
@@ -99,7 +123,8 @@ The App's private key is the only secret. Enrol it once per machine, as the huma
 python -B ~/.agents-state/github-gate/runtime/github_gate.py onboard app --app <slug> --key <private-key.pem>
 ```
 
-In a repository that declares an App, `tj install --onboard` asks for the key path instead.
+In a repository whose committed file names an App, `tj install --onboard` asks for the key
+path instead.
 Onboarding reads the App's public id from GitHub, verifies that the key signs as that App,
 stores it readable only by you, and lists the accounts the App is installed on. It never prints
 the key or a token. To cover another account, install the App on it in GitHub; no local change

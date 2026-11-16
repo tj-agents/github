@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import assert_never
 
-from gate_app import AppFactory
+from gate_app import Apps
 from gate_declaration import declared_app
 from gate_error import GateError
 from gate_gh import gh_on_path, is_gate_launcher
@@ -417,7 +417,7 @@ def install_git_config(machine: Machine) -> list[str]:
 
 
 def check_repository(
-    cwd: Path, environment: Mapping[str, str], app_for: AppFactory
+    cwd: Path, environment: Mapping[str, str], apps: Apps
 ) -> list[str]:
     """For a repository declaring an App, whether this machine has enrolled it."""
     try:
@@ -427,18 +427,18 @@ def check_repository(
     if slug is None:
         return []
     try:
-        app_for(slug).verify_enrolled()
+        apps(slug).verify_enrolled()
     except GateError as error:
         return [str(error)]
     return []
 
 
-def check(machine: Machine, cwd: Path, app_for: AppFactory) -> list[str]:
+def check(machine: Machine, cwd: Path, apps: Apps) -> list[str]:
     return [
         *check_runtime(machine),
         *check_launcher(machine),
         *check_git_config(machine),
-        *check_repository(cwd, machine.environment, app_for),
+        *check_repository(cwd, machine.environment, apps),
     ]
 
 

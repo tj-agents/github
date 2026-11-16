@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from gate_access import Declarations
 from gate_app import AppError, Apps
 from gate_error import GateError
 from gate_gh import ShimError, real_gh, run
@@ -34,13 +35,13 @@ def real(sandbox: Sandbox) -> Path:
 
 
 @pytest.fixture
-def enrolled(apps: Apps) -> Apps:
+def enrolled(apps: Apps, declarations: Declarations) -> Declarations:
     apps("sample-bot").enrol(KEY, NOW)
-    return apps
+    return declarations
 
 
 def test_a_human_reaches_the_real_gh_with_the_inherited_environment(
-    sandbox: Sandbox, real: Path, enrolled: Apps, github: FakeGitHub
+    sandbox: Sandbox, real: Path, enrolled: Declarations, github: FakeGitHub
 ) -> None:
     repository = sandbox.repository("declared", APP)
     platform = RecordingPlatform()
@@ -56,7 +57,7 @@ def test_a_human_reaches_the_real_gh_with_the_inherited_environment(
 def test_an_agent_outside_app_repositories_reaches_the_real_gh_untouched(
     sandbox: Sandbox,
     real: Path,
-    enrolled: Apps,
+    enrolled: Declarations,
     github: FakeGitHub,
     declaration: dict[str, object] | None,
 ) -> None:
@@ -65,12 +66,13 @@ def test_an_agent_outside_app_repositories_reaches_the_real_gh_untouched(
     for cwd in (repository, sandbox.neutral):
         run(["pr", "list"], agent_environment(sandbox), cwd, enrolled, platform, NOW)
     assert platform.calls == [(real, ("pr", "list"), None)] * 2
-    assert github.issued == 0
+    reads = [] if declaration else [("sample-org", "ghs_issued" + "1".zfill(32))]
+    assert github.owner_reads() == reads
 
 
 @pytest.mark.parametrize("marker", AGENT_MARKERS)
 def test_an_agent_in_an_app_repository_acts_as_the_app_for_its_origin(
-    sandbox: Sandbox, real: Path, enrolled: Apps, marker: str
+    sandbox: Sandbox, real: Path, enrolled: Declarations, marker: str
 ) -> None:
     repository = sandbox.repository("declared", APP)
     platform = RecordingPlatform()
@@ -97,7 +99,7 @@ def test_an_agent_in_an_app_repository_acts_as_the_app_for_its_origin(
 def test_an_agent_targeting_an_account_the_app_does_not_cover_is_refused(
     sandbox: Sandbox,
     real: Path,
-    enrolled: Apps,
+    enrolled: Declarations,
     github: FakeGitHub,
     arguments: tuple[str, ...],
     origin: str,
@@ -131,7 +133,7 @@ def test_an_agent_targeting_an_account_the_app_does_not_cover_is_refused(
 def test_agent_commands_that_could_reach_human_credentials_are_refused(
     sandbox: Sandbox,
     real: Path,
-    enrolled: Apps,
+    enrolled: Declarations,
     arguments: tuple[str, ...],
     extra: dict[str, str],
     reason: str,
@@ -151,12 +153,19 @@ def test_agent_commands_that_could_reach_human_credentials_are_refused(
 
 
 def test_an_agent_without_an_enrolled_app_is_refused(
-    sandbox: Sandbox, real: Path, apps: Apps
+    sandbox: Sandbox, real: Path, declarations: Declarations
 ) -> None:
     repository = sandbox.repository("declared", APP)
     platform = RecordingPlatform()
     with pytest.raises(GateError, match="not enrolled on this machine"):
-        run(["pr", "list"], agent_environment(sandbox), repository, apps, platform, NOW)
+        run(
+            ["pr", "list"],
+            agent_environment(sandbox),
+            repository,
+            declarations,
+            platform,
+            NOW,
+        )
     assert platform.calls == []
 
 
@@ -195,7 +204,7 @@ def test_the_installed_shim_passes_a_humans_environment_through_unchanged(
     shimmed = dump(sandbox, [str(launcher), *command], repository)
     assert shimmed == direct
     monkeypatch.setenv("CLAUDECODE", "1")
-    undeclared = sandbox.repository("undeclared")
+    undeclared = sandbox.repository("undeclared", origin=None)
     direct = dump(sandbox, [str(real), *command], undeclared)
     assert dump(sandbox, [str(launcher), *command], undeclared) == direct
 

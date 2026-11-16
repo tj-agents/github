@@ -17,6 +17,7 @@ from pathlib import Path
 
 import gate_posix
 import gate_windows
+from gate_access import Declarations
 from gate_agent import agent_host
 from gate_app import Apps, OpenSSL, fetch_github
 from gate_credential import (
@@ -98,6 +99,13 @@ def onboard_declared(
         enrol(apps, slug, Path(key.strip('"')).expanduser(), now)
 
 
+def declarations_for(script: Path, platform: Platform, sign: OpenSSL) -> Declarations:
+    """Access resolution for the installed runtime, whose parent is the gate home."""
+    home = script.parent.parent
+    apps = Apps(home, platform, fetch_github, sign)
+    return Declarations(apps, fetch_github, home / "owner-defaults", platform)
+
+
 def machine_for(
     environment: Mapping[str, str],
     platform: Platform,
@@ -129,11 +137,11 @@ def command(
 ) -> int:
     sign = OpenSSL(environment.get("PATH", ""))
     if arguments.command == "credential":
-        apps = Apps(script.parent.parent, platform, fetch_github, sign)
+        declarations = declarations_for(script, platform, sign)
         request = CredentialRequest.parse(sys.stdin.read(MAX_REQUEST_CHARACTERS))
         try:
             reply = answer(
-                arguments.operation, request, environment, Path.cwd(), apps, now
+                arguments.operation, request, environment, Path.cwd(), declarations, now
             )
         except Exception as error:  # noqa: BLE001 - agents must never reach human helpers
             failed = QUIT if agent_host(environment) else ""
@@ -185,13 +193,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     now = time.time()
     try:
         if arguments[:1] == ["gh"]:
-            apps = Apps(
-                script.parent.parent,
-                platform,
-                fetch_github,
-                OpenSSL(environment.get("PATH", "")),
+            declarations = declarations_for(
+                script, platform, OpenSSL(environment.get("PATH", ""))
             )
-            return run_gh(arguments[1:], environment, Path.cwd(), apps, platform, now)
+            return run_gh(
+                arguments[1:], environment, Path.cwd(), declarations, platform, now
+            )
         return command(
             parser().parse_args(arguments), environment, platform, script, now
         )

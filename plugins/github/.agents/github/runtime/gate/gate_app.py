@@ -368,12 +368,6 @@ class GitHubApp:
         return app
 
 
-class AppFactory(Protocol):
-    """Build the App a repository declares; injected so tests can fake GitHub."""
-
-    def __call__(self, slug: str) -> GitHubApp: ...
-
-
 @dataclass(frozen=True, slots=True)
 class Apps:
     """The App enrolments kept under one gate home."""
@@ -387,3 +381,13 @@ class Apps:
         return GitHubApp(
             slug, self.home / "apps" / slug, self.platform, self.fetch, self.sign
         )
+
+    def enrolled(self) -> list[GitHubApp]:
+        directory = self.home / "apps"
+        if not directory.is_dir():
+            return []
+        return [
+            self(path.name)
+            for path in sorted(directory.iterdir())
+            if (path / "app.json").is_file() and (path / "key.pem").is_file()
+        ]
