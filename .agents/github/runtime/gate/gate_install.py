@@ -26,8 +26,8 @@ from gate_platform import Platform
 
 ENTRY = "github_gate.py"
 GITHUB = "https://github.com"
-BLOCK_BEGIN = "# >>> tj-agents github access gate (written by setup; do not edit) >>>"
-BLOCK_END = "# <<< tj-agents github access gate <<<"
+BLOCK_BEGIN = "# >>> github@tj-agents access gate (written by setup; do not edit) >>>"
+BLOCK_END = "# <<< github@tj-agents access gate <<<"
 BLOCK_NOTE = (
     "# Agents in repositories that commit .agents/github-access.json reach\n"
     "# GitHub through the gate; everyone else falls through to the github.com\n"
