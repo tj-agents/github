@@ -153,7 +153,7 @@ repository's merge policy needs your approval, the gate:
    clipboard.
 
 ```text
-github-gate: https://github.com/sample-org/core/pull/5 needs your review: linked it to github:github.com/sample-org/core:10, and `! tj approve` is on your clipboard; paste it into this session to approve
+github-gate: https://github.com/sample-org/core/pull/5 needs your review: linked it to <work item ref>, and `! tj approve` is on your clipboard; paste it into this session to approve
 ```
 
 Any failure is printed with its reason and what to do instead, for example when there is no
