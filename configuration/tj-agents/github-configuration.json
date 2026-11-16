@@ -1,12 +1,6 @@
 {
   "schema_version": 1,
   "owner": "tj-agents",
-  "bot_identity": {
-    "enabled": false,
-    "except": [
-      "learning"
-    ]
-  },
   "repositories": {
     "github-actions": {
       "rulesets": {
@@ -108,7 +102,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "agent": {
       "rulesets": {
@@ -198,13 +193,20 @@
                   },
                   {
                     "context": "verify / default-branch"
+                  },
+                  {
+                    "context": "Check host declarations and behavior (ubuntu-latest)"
+                  },
+                  {
+                    "context": "Check host declarations and behavior (windows-latest)"
                   }
                 ]
               }
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "agent-store": {
       "rulesets": {
@@ -294,7 +296,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "azure": {
       "rulesets": {
@@ -399,7 +402,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "cli": {
       "rulesets": {
@@ -501,7 +505,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "core": {
       "rulesets": {
@@ -588,7 +593,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "cpp": {
       "rulesets": {
@@ -649,7 +655,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "docs": {
       "rulesets": {
@@ -690,7 +697,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "dotnet": {
       "rulesets": {
@@ -786,7 +794,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "github": {
       "rulesets": {
@@ -892,7 +901,8 @@
             "TF_API_TOKEN": "hcp_api_token"
           }
         }
-      }
+      },
+      "requires_approval": false
     },
     "marketplace": {
       "rulesets": {
@@ -971,13 +981,17 @@
                   },
                   {
                     "context": "verify (windows-latest)"
+                  },
+                  {
+                    "context": "Generic scope check"
                   }
                 ]
               }
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "nvim": {
       "rulesets": {
@@ -1073,7 +1087,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "personal": {
       "rulesets": {
@@ -1169,7 +1184,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "python": {
       "rulesets": {
@@ -1265,7 +1281,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "react": {
       "rulesets": {
@@ -1361,7 +1378,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "rust": {
       "rulesets": {
@@ -1457,7 +1475,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "template": {
       "rulesets": {
@@ -1558,7 +1577,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "work": {
       "rulesets": {
@@ -1654,7 +1674,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "work-items": {
       "rulesets": {
@@ -1750,7 +1771,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "learning": {
       "rulesets": {
@@ -1846,7 +1868,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     },
     "renovate-config": {
       "rulesets": {
@@ -1887,7 +1910,8 @@
             }
           ]
         }
-      }
+      },
+      "requires_approval": false
     }
   },
   "secrets": {
