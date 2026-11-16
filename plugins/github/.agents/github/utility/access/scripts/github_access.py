@@ -311,6 +311,20 @@ def dispatch(
             return 0
         if arguments.operation == "git":
             return run_git(binding, profile, command)
+        invocation = github_tools.validate_gh_command(
+            profile,
+            command,
+            default_repository=git_read(
+                binding.git, Path.cwd(), ["remote", "get-url", "origin"]
+            ),
+        )
+        input_text = None
+        if invocation.arguments[-4:] == ("-X", "POST", "--input", "-"):
+            input_text = sys.stdin.read(1048577)
+            if len(input_text) > 1048576:
+                raise access_core.AccessError(
+                    "api-invalid: pending review input is too large"
+                )
         result = github_tools.run_gh(
             profile,
             state,
@@ -319,6 +333,7 @@ def dispatch(
             command,
             platform=platform,
             cwd=Path.cwd(),
+            input_text=input_text,
             default_repository=git_read(
                 binding.git, Path.cwd(), ["remote", "get-url", "origin"]
             ),
