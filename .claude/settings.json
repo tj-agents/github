@@ -10,6 +10,7 @@
   "enabledPlugins": {
     "agent-store@tj-agents": true,
     "agent@tj-agents": true,
+    "azure@tj-agents": true,
     "base@tj-agents": true,
     "cli@tj-agents": true,
     "docs@tj-agents": true,
