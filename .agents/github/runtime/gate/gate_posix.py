@@ -29,6 +29,17 @@ def launcher_bytes(python: Path, script: Path) -> bytes:
     return f"#!/bin/sh\n# {MARKER}\n{command}\n".encode()
 
 
+def approve_launcher_name() -> str:
+    return "tj-approve"
+
+
+def approve_launcher_bytes(python: Path, script: Path) -> bytes:
+    command = " ".join(
+        ("exec", shlex.quote(python.as_posix()), "-B", shlex.quote(script.as_posix()))
+    )
+    return f'#!/bin/sh\n# {MARKER}\n{command} "$@"\n'.encode()
+
+
 def write_launcher(path: Path, content: bytes) -> None:
     path.write_bytes(content)
     path.chmod(0o755)
@@ -42,6 +53,10 @@ def verify_private(path: Path, *, directory: bool) -> None:
     expected = 0o700 if directory else 0o600
     if stat.S_IMODE(path.stat().st_mode) != expected:
         raise PrivateStateError(f"{path} is readable by other users; run onboarding")
+
+
+def is_terminal(descriptor: int) -> bool:
+    return os.isatty(descriptor)
 
 
 def execute(

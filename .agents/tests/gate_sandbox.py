@@ -286,6 +286,18 @@ class RecordingPlatform:
         CURRENT_PLATFORM.write_launcher(path, content)
 
     @staticmethod
+    def approve_launcher_name() -> str:
+        return CURRENT_PLATFORM.approve_launcher_name()
+
+    @staticmethod
+    def approve_launcher_bytes(python: Path, script: Path) -> bytes:
+        return CURRENT_PLATFORM.approve_launcher_bytes(python, script)
+
+    @staticmethod
+    def is_terminal(descriptor: int) -> bool:
+        return CURRENT_PLATFORM.is_terminal(descriptor)
+
+    @staticmethod
     def protect(path: Path, *, directory: bool) -> None:
         CURRENT_PLATFORM.protect(path, directory=directory)
 

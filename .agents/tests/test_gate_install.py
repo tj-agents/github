@@ -93,6 +93,11 @@ def tamper_launcher(sandbox: Sandbox) -> None:
     target.write_bytes(target.read_bytes() + b"\n# changed\n")
 
 
+def tamper_approve_launcher(sandbox: Sandbox) -> None:
+    target = sandbox.bin / CURRENT_PLATFORM.approve_launcher_name()
+    target.write_bytes(target.read_bytes() + b"\n# changed\n")
+
+
 def tamper_runtime(sandbox: Sandbox) -> None:
     target = sandbox.gate_home / "runtime" / "gate_credential.py"
     target.write_text("raise SystemExit(0)\n", encoding="utf-8")
@@ -105,6 +110,7 @@ def tamper_runtime(sandbox: Sandbox) -> None:
         (append_after_block, "configuration after the gate's block"),
         (remove_block, "does not register the gate's Git credential helper"),
         (tamper_launcher, "is missing or stale"),
+        (tamper_approve_launcher, "tj-approve"),
         (tamper_runtime, "gate_credential.py is missing or stale"),
     ],
 )
@@ -130,15 +136,20 @@ def test_a_new_human_helper_is_re_added_after_the_gate(human: Sandbox) -> None:
     assert block(human)[2:] == [GH_HELPER, 'helper = "store"', 'helper = "manager"']
 
 
-def test_setup_refuses_to_replace_a_gh_it_did_not_install(
-    sandbox: Sandbox, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    "name", [CURRENT_PLATFORM.launcher_name(), CURRENT_PLATFORM.approve_launcher_name()]
+)
+def test_setup_refuses_to_replace_a_command_it_did_not_install(
+    sandbox: Sandbox, capsys: pytest.CaptureFixture[str], name: str
 ) -> None:
     sandbox.bin.mkdir()
-    foreign = launcher(sandbox)
-    foreign.write_bytes(b"a real gh")
+    foreign = sandbox.bin / name
+    foreign.write_bytes(b"someone else's command")
     assert main(["setup"]) == 1
-    assert "is not the gate's gh; refusing to replace it" in capsys.readouterr().err
-    assert foreign.read_bytes() == b"a real gh"
+    error = capsys.readouterr().err
+    assert "was not installed by the gate; refusing to replace it" in error
+    assert foreign.read_bytes() == b"someone else's command"
+    assert not (sandbox.gate_home / "runtime").exists()
 
 
 @pytest.mark.parametrize(
@@ -203,5 +214,10 @@ def test_setup_writes_only_the_gate_runtime_its_gh_and_the_global_config(
         for path in GATE_SOURCE.iterdir()
         if path.suffix == ".py"
     )
-    expected = [f"bin/{CURRENT_PLATFORM.launcher_name()}", "home/.gitconfig", *runtime]
+    expected = [
+        f"bin/{CURRENT_PLATFORM.launcher_name()}",
+        f"bin/{CURRENT_PLATFORM.approve_launcher_name()}",
+        "home/.gitconfig",
+        *runtime,
+    ]
     assert written == sorted(expected)
