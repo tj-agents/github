@@ -9,6 +9,7 @@ github_gate.py credential OPERATION      (run by Git)
 
 import argparse
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -31,8 +32,10 @@ from gate_declaration import AppAccess, declared_app
 from gate_error import GateError
 from gate_gh import run as run_gh
 from gate_git import git_home
+from gate_handover import Handover, copy_to_clipboard
 from gate_install import Machine, check, converge, setup
 from gate_platform import Platform, SupportedPlatform
+from gate_process import launch, run_captured
 
 PLATFORMS: Mapping[SupportedPlatform, Platform] = {
     SupportedPlatform.WINDOWS: gate_windows,
@@ -196,8 +199,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             declarations = declarations_for(
                 script, platform, OpenSSL(environment.get("PATH", ""))
             )
+            handover = Handover(
+                launch=launch,
+                run=run_captured,
+                copy=copy_to_clipboard,
+                report=lambda line: print(PREFIX + line, file=sys.stderr),
+                tj=shutil.which("tj", path=environment.get("PATH")),
+                agent_store=shutil.which("agent-store", path=environment.get("PATH")),
+            )
             return run_gh(
-                arguments[1:], environment, Path.cwd(), declarations, platform, now
+                arguments[1:],
+                environment,
+                Path.cwd(),
+                declarations,
+                platform,
+                now,
+                handover,
             )
         return command(
             parser().parse_args(arguments), environment, platform, script, now

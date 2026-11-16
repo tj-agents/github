@@ -10,6 +10,7 @@ from gate_agent import agent_host
 from gate_app import GitHubApp
 from gate_declaration import AppAccess, HumanAccess
 from gate_error import GateError
+from gate_handover import Handover, awaits_approval, run_pull_request
 from gate_owner import gh_target, origin_owner, owners_in
 from gate_platform import MARKER, Platform
 
@@ -111,6 +112,7 @@ def run(
     declarations: Declarations,
     platform: Platform,
     now: float,
+    handover: Handover,
 ) -> int:
     real = real_gh(environment)
     if agent_host(environment) is None or not arguments or arguments[0] in NON_API:
@@ -122,6 +124,8 @@ def run(
         case AppAccess(slug=slug):
             app = declarations.apps(slug)
             scoped = app_environment(arguments, environment, cwd, app, now)
+            if awaits_approval(arguments):
+                return run_pull_request(real, arguments, scoped, environment, handover)
             return platform.execute(real, arguments, scoped)
         case _:
             assert_never(access)

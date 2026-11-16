@@ -17,6 +17,7 @@ from gate_sandbox import (
     Sandbox,
     fake_gh,
     tool_directories,
+    unused_handover,
 )
 
 APP = json.dumps({"schema_version": 1, "method": "app", "app": "sample-bot"})
@@ -146,7 +147,15 @@ def test_the_shim_acts_as_the_app_an_owner_default_names(
     github.owner_defaults[COVERED] = APP
     repository = sandbox.repository("repository")
     platform = RecordingPlatform()
-    run(["pr", "list"], agent(sandbox), repository, declarations, platform, NOW)
+    run(
+        ["pr", "list"],
+        agent(sandbox),
+        repository,
+        declarations,
+        platform,
+        NOW,
+        unused_handover(),
+    )
     [(_, _, scoped)] = platform.calls
     assert scoped is not None
     assert scoped["GH_TOKEN"] == CACHED_TOKEN
@@ -159,7 +168,15 @@ def test_an_owner_default_naming_an_unenrolled_app_fails_closed(
     repository = sandbox.repository("repository")
     platform = RecordingPlatform()
     with pytest.raises(AppError, match="onboard app --app sample-bot"):
-        run(["pr", "list"], agent(sandbox), repository, declarations, platform, NOW)
+        run(
+            ["pr", "list"],
+            agent(sandbox),
+            repository,
+            declarations,
+            platform,
+            NOW,
+            unused_handover(),
+        )
     assert platform.calls == []
 
 
@@ -170,14 +187,30 @@ def test_an_unreadable_owner_default_stops_agents_and_never_humans(
     repository = sandbox.repository("repository")
     platform = RecordingPlatform()
     with pytest.raises(OwnerDefaultError, match="agents in sample-org repositories"):
-        run(["pr", "list"], agent(sandbox), repository, declarations, platform, NOW)
+        run(
+            ["pr", "list"],
+            agent(sandbox),
+            repository,
+            declarations,
+            platform,
+            NOW,
+            unused_handover(),
+        )
     reply = answer("get", TRANSPORT, agent(sandbox), repository, declarations, NOW)
     assert reply.text == QUIT
     assert reply.message is not None
     assert "cannot read sample-org's default" in reply.message
     assert platform.calls == []
     reads = len(github.owner_reads())
-    run(["pr", "list"], human(sandbox), repository, declarations, platform, NOW)
+    run(
+        ["pr", "list"],
+        human(sandbox),
+        repository,
+        declarations,
+        platform,
+        NOW,
+        unused_handover(),
+    )
     reply = answer("get", TRANSPORT, human(sandbox), repository, declarations, NOW)
     assert platform.calls == [(real, ("pr", "list"), None)]
     assert reply.text == ""
@@ -190,7 +223,15 @@ def test_humans_never_look_up_an_owner_default(
     github.owner_defaults[COVERED] = APP
     repository = sandbox.repository("repository")
     platform = RecordingPlatform()
-    run(["pr", "list"], human(sandbox), repository, declarations, platform, NOW)
+    run(
+        ["pr", "list"],
+        human(sandbox),
+        repository,
+        declarations,
+        platform,
+        NOW,
+        unused_handover(),
+    )
     reply = answer("get", TRANSPORT, human(sandbox), repository, declarations, NOW)
     assert reply.text == ""
     assert github.calls == []

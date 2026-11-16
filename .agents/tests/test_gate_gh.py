@@ -17,6 +17,7 @@ from gate_sandbox import (
     Sandbox,
     fake_gh,
     tool_directories,
+    unused_handover,
 )
 from github_gate import main
 
@@ -46,7 +47,15 @@ def test_a_human_reaches_the_real_gh_with_the_inherited_environment(
     repository = sandbox.repository("declared", APP)
     platform = RecordingPlatform()
     environment = sandbox.environment(PATH=str(real.parent))
-    run(["pr", "list"], environment, repository, enrolled, platform, NOW)
+    run(
+        ["pr", "list"],
+        environment,
+        repository,
+        enrolled,
+        platform,
+        NOW,
+        unused_handover(),
+    )
     assert platform.calls == [(real, ("pr", "list"), None)]
     assert github.issued == 0
 
@@ -64,7 +73,15 @@ def test_an_agent_outside_app_repositories_reaches_the_real_gh_untouched(
     repository = sandbox.repository("work", declaration)
     platform = RecordingPlatform()
     for cwd in (repository, sandbox.neutral):
-        run(["pr", "list"], agent_environment(sandbox), cwd, enrolled, platform, NOW)
+        run(
+            ["pr", "list"],
+            agent_environment(sandbox),
+            cwd,
+            enrolled,
+            platform,
+            NOW,
+            unused_handover(),
+        )
     assert platform.calls == [(real, ("pr", "list"), None)] * 2
     reads = [] if declaration else [("sample-org", "ghs_issued" + "1".zfill(32))]
     assert github.owner_reads() == reads
@@ -78,9 +95,17 @@ def test_an_agent_in_an_app_repository_acts_as_the_app_for_its_origin(
     platform = RecordingPlatform()
     path = os.pathsep.join([str(real.parent), *tool_directories()])
     environment = sandbox.environment(PATH=path, **{marker: "session"})
-    run(["pr", "create", "--fill"], environment, repository, enrolled, platform, NOW)
+    run(
+        ["pr", "list"],
+        environment,
+        repository,
+        enrolled,
+        platform,
+        NOW,
+        unused_handover(),
+    )
     [(executable, arguments, scoped)] = platform.calls
-    assert (executable, arguments) == (real, ("pr", "create", "--fill"))
+    assert (executable, arguments) == (real, ("pr", "list"))
     assert scoped is not None
     assert scoped["GH_TOKEN"].startswith("ghs_issued")
     assert {key: value for key, value in scoped.items() if key != "GH_TOKEN"} == (
@@ -109,7 +134,15 @@ def test_an_agent_targeting_an_account_the_app_does_not_cover_is_refused(
     )
     platform = RecordingPlatform()
     with pytest.raises(AppError, match="other-org is not covered by GitHub App"):
-        run(arguments, agent_environment(sandbox), repository, enrolled, platform, NOW)
+        run(
+            arguments,
+            agent_environment(sandbox),
+            repository,
+            enrolled,
+            platform,
+            NOW,
+            unused_handover(),
+        )
     assert platform.calls == []
     assert github.issued == 0
 
@@ -148,6 +181,7 @@ def test_agent_commands_that_could_reach_human_credentials_are_refused(
             enrolled,
             platform,
             NOW,
+            unused_handover(),
         )
     assert platform.calls == []
 
@@ -165,6 +199,7 @@ def test_an_agent_without_an_enrolled_app_is_refused(
             declarations,
             platform,
             NOW,
+            unused_handover(),
         )
     assert platform.calls == []
 

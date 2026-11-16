@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gate_app import GitHubError
+from gate_error import GateError
+from gate_handover import Handover
 from gate_platform import Platform, SupportedPlatform
 from gate_private import write_private
 from github_gate import PLATFORMS
@@ -311,3 +313,57 @@ class RecordingPlatform:
         recorded = None if environment is None else dict(environment)
         self.calls.append((executable, tuple(arguments), recorded))
         return 0
+
+
+@dataclass
+class FakeHandover:
+    """Programs a handover runs, answered from `replies` and recorded in order."""
+
+    launched: tuple[int, str] | None = (0, "")
+    replies: dict[tuple[str, ...], subprocess.CompletedProcess[str]] = field(
+        default_factory=dict
+    )
+    copy_failure: str | None = None
+    launches: list[tuple[Path, tuple[str, ...], dict[str, str], bool]] = field(
+        default_factory=list
+    )
+    runs: list[tuple[tuple[str, ...], dict[str, str]]] = field(default_factory=list)
+    copied: list[str] = field(default_factory=list)
+    reports: list[str] = field(default_factory=list)
+
+    def launch(
+        self,
+        executable: Path,
+        arguments: Sequence[str],
+        environment: Mapping[str, str],
+        capture: bool,
+    ) -> tuple[int, str]:
+        self.launches.append((executable, tuple(arguments), dict(environment), capture))
+        if self.launched is None:
+            raise AssertionError("no pull request command was expected")
+        return self.launched
+
+    def run(
+        self, command: Sequence[str], environment: Mapping[str, str], timeout: float
+    ) -> subprocess.CompletedProcess[str]:
+        key = (Path(command[0]).name, *command[1:])
+        self.runs.append((key, dict(environment)))
+        reply = self.replies.get(key)
+        if reply is None:
+            raise AssertionError(f"unexpected command {key}")
+        return reply
+
+    def copy(self, text: str) -> None:
+        if self.copy_failure is not None:
+            raise GateError(self.copy_failure)
+        self.copied.append(text)
+
+    def handover(self) -> Handover:
+        return Handover(
+            self.launch, self.run, self.copy, self.reports.append, "tj", "agent-store"
+        )
+
+
+def unused_handover() -> Handover:
+    """A handover any use of which fails the test."""
+    return FakeHandover(launched=None).handover()

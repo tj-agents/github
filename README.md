@@ -134,17 +134,36 @@ is needed. Create a new App in GitHub's settings, then enrol its key.
 ### Approving the App's pull requests
 
 The App opens pull requests; you approve them as yourself with `tj approve`, which `tj` runs
-through the `tj-approve` launcher setup installs. After opening or readying a pull request, an
-agent links it to its session's work item and hands you the command with the pull request's
-link, following `cli:clip`'s handover rule:
+through the `tj-approve` launcher setup installs.
+
+The gate hands each pull request over itself. After an agent's `gh pr create` succeeds in a
+repository whose access resolves to `app`, it asks GitHub, as the App, for the pull request's
+review decision. Drafts, `--web` and `--dry-run` are excluded. The same check runs after
+`gh pr ready`, except with `--undo`. When the decision is `REVIEW_REQUIRED`, meaning the
+repository's merge policy needs your approval, the gate:
+
+1. finds the agent's session in agent-store: the `TJ_RUN_LAUNCH_ID` launch, else
+   `claude:<CLAUDE_CODE_SESSION_ID>` or `codex:<CODEX_THREAD_ID>`;
+2. links the pull request to that session's one work item with
+   `tj item --profile github link <ref> <url>`;
+3. puts `! tj approve` on your clipboard, verified by reading it back (tj-cli's clipboard,
+   shipped with the gate: Windows' clipboard API, `wl-copy`/`xclip`/`xsel` on Linux, `pbcopy`
+   on macOS);
+4. prints one line naming the pull request, the work item, and that `! tj approve` is on the
+   clipboard.
 
 ```text
-tj approve
+github-gate: https://github.com/sample-org/core/pull/5 needs your review: linked it to github:github.com/sample-org/core:10, and `! tj approve` is on your clipboard; paste it into this session to approve
 ```
 
-It finds the session's work items in agent-store, including those of sessions and launches it
-started, and asks `tj item` for their pull requests. The session comes from the environment the
-command runs in; `--session <host>:<id>` names another one.
+Any failure is printed with its reason and what to do instead, for example when there is no
+registered session, several or no linked work items, a failed link or no clipboard. A handover
+never changes the gh command's exit status. When the review decision is anything else, nothing
+happens.
+
+`tj approve` finds the session's work items in agent-store, including those of sessions and
+launches it started, and asks `tj item` for their pull requests. The session comes from the
+environment the command runs in; `--session <host>:<id>` names another one.
 
 It keeps an open pull request only when its author is the App that the pull request's
 repository declares, read from GitHub (the repository's file on the base branch, then the
