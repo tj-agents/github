@@ -62,6 +62,17 @@ def test_a_covered_owner_gets_one_cached_installation_token(
     CURRENT_PLATFORM.verify_private(app.tokens / "sample-org.json", directory=False)
 
 
+def test_a_long_dotted_installation_token_is_accepted(
+    apps: Apps, github: FakeGitHub
+) -> None:
+    github.token_suffix = ".eyJ" + "a-b_c" * 70
+    app = apps("sample-bot")
+    app.enrol(KEY, NOW)
+    token = app.installation_token("sample-org", NOW)
+    assert len(token) > 255
+    assert token == app.installation_token("sample-org", NOW + 60)
+
+
 def test_an_expiring_token_is_reissued(apps: Apps, github: FakeGitHub) -> None:
     app = apps("sample-bot")
     app.enrol(KEY, NOW)

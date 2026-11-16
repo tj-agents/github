@@ -31,7 +31,8 @@ JWT_BACKDATE_SECONDS = 60
 JWT_LIFETIME_SECONDS = 540
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_KEY_BYTES = 32 * 1024
-TOKEN = re.compile(r"[A-Za-z0-9_]{20,255}")
+# Installation tokens are opaque: current ones exceed 255 characters, with "." and "-".
+TOKEN = re.compile(r"[A-Za-z0-9_.-]{20,4096}")
 LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 

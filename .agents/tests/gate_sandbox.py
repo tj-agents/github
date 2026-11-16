@@ -176,6 +176,7 @@ class FakeGitHub:
     owner_failure: GitHubError | None = None
     calls: list[tuple[str, str, str | None]] = field(default_factory=list)
     issued: int = 0
+    token_suffix: str = ""
 
     def owner_reads(self) -> list[tuple[str, str | None]]:
         return [
@@ -203,7 +204,7 @@ class FakeGitHub:
         if path.endswith("/access_tokens") and method == "POST":
             self.issued += 1
             return {
-                "token": f"ghs_issued{self.issued:032d}",
+                "token": f"ghs_issued{self.issued:032d}{self.token_suffix}",
                 "expires_at": "2027-01-15T09:00:00Z",
             }
         if path.endswith(OWNER_DEFAULT) and method == "GET":
