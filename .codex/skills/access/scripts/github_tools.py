@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -530,17 +531,33 @@ def _validate_api(
 ) -> tuple[str, ...]:
     endpoint: str | None = None
     output: list[str] = []
+    method = "GET"
+    input_stdin = False
     index = 0
     while index < len(arguments):
         item = arguments[index]
-        if item in {"--paginate"}:
+        if item in {"--paginate", "--slurp"}:
             output.append(item)
             index += 1
             continue
         if item in {"-X", "--method"}:
-            if index + 1 == len(arguments) or arguments[index + 1].upper() != "GET":
-                raise _invalid("api-invalid: employer REST access permits GET only")
-            output.extend(("-X", "GET"))
+            if (
+                index + 1 == len(arguments)
+                or arguments[index + 1].upper() not in {"GET", "POST"}
+                or method != "GET"
+            ):
+                raise _invalid("api-invalid: unsupported REST method")
+            method = arguments[index + 1].upper()
+            index += 2
+            continue
+        if item == "--input":
+            if (
+                input_stdin
+                or index + 1 == len(arguments)
+                or arguments[index + 1] != "-"
+            ):
+                raise _invalid("api-invalid: review input must be stdin")
+            input_stdin = True
             index += 2
             continue
         if item in {"-f", "--raw-field", "-F", "--field", "--jq", "--cache"}:
@@ -580,7 +597,60 @@ def _validate_api(
     ):
         raise _invalid("api-invalid: endpoint must stay inside the selected repository")
     canonical = f"/repos/{repository.slug}{match.group(3)}"
+    if method == "POST":
+        if (
+            profile.permissions.get("pull_requests") != "write"
+            or not input_stdin
+            or output
+            or not re.fullmatch(r"/pulls/[1-9][0-9]*/reviews", match.group(3))
+        ):
+            raise _invalid("api-invalid: only pending review creation is supported")
+        return ("api", canonical, "-X", "POST", "--input", "-")
+    if input_stdin:
+        raise _invalid("api-invalid: GET does not accept input")
     return ("api", canonical, *output, "-X", "GET")
+
+
+def validate_pending_review_input(value: str) -> str:
+    try:
+        payload = json.loads(value)
+    except (ValueError, TypeError) as error:
+        raise _invalid("api-invalid: pending review input must be JSON") from error
+    if (
+        not isinstance(payload, dict)
+        or not payload
+        or set(payload) - {"body", "commit_id", "comments"}
+    ):
+        raise _invalid("api-invalid: only pending review fields are allowed")
+    if not isinstance(payload.get("commit_id"), str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40}", payload["commit_id"]
+    ):
+        raise _invalid("api-invalid: pending review requires a full commit id")
+    comments = payload.get("comments")
+    if not isinstance(comments, list) or not comments:
+        raise _invalid("api-invalid: pending review requires inline comments")
+    for comment in comments:
+        if not isinstance(comment, dict) or set(comment) != {
+            "path",
+            "line",
+            "side",
+            "body",
+        }:
+            raise _invalid("api-invalid: invalid review comment fields")
+        if (
+            not isinstance(comment["path"], str)
+            or not _valid_scalar(comment["path"])
+            or not isinstance(comment["body"], str)
+            or not comment["body"].strip()
+            or "\x00" in comment["body"]
+            or type(comment["line"]) is not int
+            or comment["line"] < 1
+            or comment["side"] not in ("LEFT", "RIGHT")
+        ):
+            raise _invalid("api-invalid: invalid review comment")
+    if "body" in payload and not isinstance(payload["body"], str):
+        raise _invalid("api-invalid: invalid review body")
+    return json.dumps(payload)
 
 
 def validate_gh_command(
@@ -705,10 +775,15 @@ def run_gh(
     default_repository: str | None = None,
     environment: Mapping[str, str] | None = None,
     timeout: float = 60,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     invocation = validate_gh_command(
         profile, arguments, default_repository=default_repository
     )
+    if invocation.arguments[-4:] == ("-X", "POST", "--input", "-"):
+        input_text = validate_pending_review_input(input_text or "")
+    elif input_text is not None:
+        raise _invalid("api-invalid: unexpected stdin")
     if not cwd.is_absolute() or not cwd.is_dir():
         raise _invalid("cwd-invalid: pass an existing absolute gh working directory")
     if not executable.is_absolute() or not executable.is_file():
@@ -720,6 +795,7 @@ def run_gh(
             result = subprocess.run(
                 [str(executable), *invocation.arguments],
                 text=True,
+                input=input_text,
                 capture_output=True,
                 check=False,
                 cwd=cwd,
