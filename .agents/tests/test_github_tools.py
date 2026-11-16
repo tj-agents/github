@@ -189,7 +189,7 @@ def test_gh_api_is_rest_get_only_inside_selected_repository(profile: Profile) ->
         ),
     )
     assert invocation.arguments[:2] == ("api", "/repos/employer/private-project/issues")
-    with pytest.raises(AccessError, match="GET only"):
+    with pytest.raises(AccessError, match="pending review"):
         validate_gh_command(
             profile,
             (
@@ -201,6 +201,131 @@ def test_gh_api_is_rest_get_only_inside_selected_repository(profile: Profile) ->
                 "employer/private-project",
             ),
         )
+
+
+def test_pending_review_restricts_endpoint_permission_and_payload(
+    profile: Profile,
+) -> None:
+    writable = replace(profile, permissions={"pull_requests": "write"})
+    args = (
+        "api",
+        "repos/employer/private-project/pulls/25/reviews",
+        "-X",
+        "POST",
+        "--input",
+        "-",
+    )
+    invocation = validate_gh_command(
+        writable, args, default_repository="employer/private-project"
+    )
+    assert invocation.arguments[-4:] == ("-X", "POST", "--input", "-")
+    with pytest.raises(AccessError, match="pending review"):
+        validate_gh_command(
+            profile, args, default_repository="employer/private-project"
+        )
+    with pytest.raises(AccessError, match="pending review"):
+        validate_gh_command(
+            writable,
+            (
+                "api",
+                "repos/employer/private-project/issues/1/comments",
+                "-X",
+                "POST",
+                "--input",
+                "-",
+            ),
+            default_repository="employer/private-project",
+        )
+    data = {
+        "commit_id": "a" * 40,
+        "comments": [
+            {"path": "a.cs", "line": 1, "side": "RIGHT", "body": "Review\ncomment"}
+        ],
+    }
+    assert (
+        json.loads(github_tools.validate_pending_review_input(json.dumps(data))) == data
+    )
+    for bad in [
+        {**data, "event": "APPROVE"},
+        {**data, "event": "COMMENT"},
+        {**data, "commit_id": "main"},
+        {**data, "comments": []},
+        {**data, "comments": [{**data["comments"][0], "line": True}]},
+    ]:
+        with pytest.raises(AccessError):
+            github_tools.validate_pending_review_input(json.dumps(bad))
+
+
+def test_api_read_supports_slurped_pagination(profile: Profile) -> None:
+    invocation = validate_gh_command(
+        profile,
+        (
+            "api",
+            "repos/employer/private-project/pulls/25/reviews",
+            "--paginate",
+            "--slurp",
+        ),
+        default_repository="employer/private-project",
+    )
+    assert "--slurp" in invocation.arguments
+
+
+def test_pending_review_payload_reaches_gh_and_rejected_input_never_reads_vault(
+    profile: Profile,
+    platform: PlatformProtocol,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writable = replace(profile, permissions={"pull_requests": "write"})
+    executable = tmp_path / "gh"
+    executable.touch()
+    vault = FakeVault()
+    captured = []
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.append(kwargs["input"])
+        return subprocess.CompletedProcess(args, 0, '{"state":"PENDING"}', "")
+
+    monkeypatch.setattr(github_tools.subprocess, "run", fake_run)
+    args = (
+        "api",
+        "repos/employer/private-project/pulls/25/reviews",
+        "-X",
+        "POST",
+        "--input",
+        "-",
+    )
+    data = {
+        "commit_id": "a" * 40,
+        "comments": [{"path": "a.cs", "line": 1, "side": "RIGHT", "body": "Review"}],
+    }
+    with pytest.raises(AccessError):
+        run_gh(
+            writable,
+            FakeState(),
+            vault,
+            executable,
+            args,
+            platform=platform,
+            cwd=tmp_path,
+            default_repository="employer/private-project",
+            input_text=json.dumps({**data, "event": "APPROVE"}),
+        )
+    assert not vault.reads
+    result = run_gh(
+        writable,
+        FakeState(),
+        vault,
+        executable,
+        args,
+        platform=platform,
+        cwd=tmp_path,
+        default_repository="employer/private-project",
+        input_text=json.dumps(data),
+    )
+    assert result.returncode == 0
+    assert json.loads(captured[0]) == data
+    assert vault.reads == ["a" * 32]
 
 
 def test_gh_api_normalizes_relative_path_forces_get_and_rejects_scope_bypass(
