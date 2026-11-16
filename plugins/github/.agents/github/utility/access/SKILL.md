@@ -71,8 +71,11 @@ or unrestricted tool methods.
 
 The installed `gh` executable is a scoped launcher. Its supported commands use a closed argument grammar;
 unknown commands, alternate hosts, cross-repository targets, browser/editor launches and arbitrary GraphQL
-are rejected. REST `api` supports repository reads. Use the owning repository's delivery procedures for
-writes and merges. Unsupported operations require a reviewed capability change, never a token export or
+are rejected. REST `api` supports repository reads and pending inline review creation at the selected
+repository's `/pulls/<number>/reviews`, when the profile grants pull-request writes. Review creation
+accepts JSON through stdin, requires an exact commit and inline comments, and rejects an `event` so it
+cannot submit or approve the review. Use the owning repository's delivery procedures for other writes
+and merges. Unsupported operations require a reviewed capability change, never a token export or
 an account-wide login. The token exists only in the authorized child environment and secure vault.
 
 Run setup, activate each selected native host, then onboard from the exact selected checkout. These
