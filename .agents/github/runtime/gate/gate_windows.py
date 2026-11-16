@@ -226,30 +226,7 @@ if sys.platform == "win32":
         finally:
             kernel.LocalFree(rendered)
 
-    def is_terminal(descriptor: int) -> bool:
-        """A console a person can type into: not NUL, a pipe or a hidden console."""
-        import msvcrt
-
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel.GetConsoleMode.argtypes = (
-            wintypes.HANDLE,
-            ctypes.POINTER(wintypes.DWORD),
-        )
-        kernel.GetConsoleMode.restype = wintypes.BOOL
-        kernel.GetConsoleWindow.restype = wintypes.HWND
-        try:
-            handle = msvcrt.get_osfhandle(descriptor)
-        except OSError:
-            return False
-        mode = wintypes.DWORD()
-        return bool(kernel.GetConsoleMode(handle, ctypes.byref(mode))) and bool(
-            kernel.GetConsoleWindow()
-        )
-
 else:
-
-    def is_terminal(descriptor: int) -> bool:
-        return False
 
     def user_sid() -> str:
         raise PrivateStateError(UNAVAILABLE)

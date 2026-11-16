@@ -12,14 +12,11 @@ provenance: house
 # Approve
 
 After you open or ready a pull request in a repository whose GitHub access resolves to `app`,
-link it to this session's work item, then give the human its link and the approval command.
-Never run the command yourself: it approves as the human, and it refuses to run without their
-terminal.
+link it to this session's work item, then hand the human the command `tj approve` with the
+pull request's link, following `cli:clip`'s handover rule. Never run `tj approve` yourself; it
+approves as the human.
 
 ```text
 tj item link <ref> https://github.com/<owner>/<repo>/pull/<number>
-Human, in your own terminal: tj approve --session claude:<CLAUDE_CODE_SESSION_ID>
+Handed to the human: tj approve, with https://github.com/<owner>/<repo>/pull/<number>
 ```
-
-In Codex the session is `codex:<CODEX_THREAD_ID>`. Expand the variable to its value in the line
-you give the human.

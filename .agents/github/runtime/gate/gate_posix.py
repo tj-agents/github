@@ -55,10 +55,6 @@ def verify_private(path: Path, *, directory: bool) -> None:
         raise PrivateStateError(f"{path} is readable by other users; run onboarding")
 
 
-def is_terminal(descriptor: int) -> bool:
-    return os.isatty(descriptor)
-
-
 def execute(
     executable: Path,
     arguments: Sequence[str],

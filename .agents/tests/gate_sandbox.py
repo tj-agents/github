@@ -294,10 +294,6 @@ class RecordingPlatform:
         return CURRENT_PLATFORM.approve_launcher_bytes(python, script)
 
     @staticmethod
-    def is_terminal(descriptor: int) -> bool:
-        return CURRENT_PLATFORM.is_terminal(descriptor)
-
-    @staticmethod
     def protect(path: Path, *, directory: bool) -> None:
         CURRENT_PLATFORM.protect(path, directory=directory)
 
