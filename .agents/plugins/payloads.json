@@ -3,5 +3,12 @@
     "github": [
       "github"
     ]
-  }
+  },
+  "resources": [
+    {
+      "plugin": "github",
+      "source": ".agents/github/runtime",
+      "destination": ".agents/github/runtime"
+    }
+  ]
 }

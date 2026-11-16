@@ -36,10 +36,11 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "A", "BLE", "C4", "SIM", "PTH", "P
 ".agents/github/utility/access/scripts/access_core.py" = ["ANN401", "PLR6301"]
 ".agents/github/utility/collaboration/scripts/github_collaboration.py" = ["ANN401", "UP036"]
 ".agents/github/utility/access/scripts/github_access.py" = ["UP036"]
+".agents/github/runtime/gate/github_gate.py" = ["UP036"]
 
 [tool.mypy]
 enable_error_code = ["ignore-without-code", "exhaustive-match"]
-mypy_path = [".agents/github/utility/collaboration/scripts", ".agents/github/utility/access/scripts", ".agents/github/utility/configuration/scripts"]
+mypy_path = [".agents/github/utility/collaboration/scripts", ".agents/github/utility/access/scripts", ".agents/github/utility/configuration/scripts", ".agents/github/runtime/gate"]
 strict = true
 warn_unreachable = true
 files = [".agents"]
