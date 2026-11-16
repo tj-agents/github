@@ -44,7 +44,7 @@ class Machine:
         assert main(["setup"]) == 0
         sandbox.enrol_cached()
         self.declared = sandbox.repository("declared", APP)
-        self.undeclared = sandbox.repository("undeclared")
+        self.undeclared = sandbox.repository("undeclared", origin=None)
 
     def operations(self) -> list[dict[str, str]]:
         if not self.log.is_file():
@@ -108,18 +108,19 @@ def test_linked_worktrees_read_their_own_committed_declaration(
 ) -> None:
     sandbox = machine.sandbox
     sandbox.git(machine.declared, "branch", "feature")
-    sandbox.git(machine.declared, "checkout", "-q", "--orphan", "bare")
-    sandbox.git(machine.declared, "rm", "-q", "-r", "--cached", ".")
-    sandbox.git(machine.declared, "commit", "-q", "--allow-empty", "-m", "bare")
-    sandbox.git(machine.declared, "checkout", "-q", "-f", "main")
+    opted_out = sandbox.root / "opted-out"
+    sandbox.git(machine.declared, "worktree", "add", "-q", "-b", "out", str(opted_out))
+    human = {"schema_version": 1, "method": "human"}
+    (opted_out / ".agents/github-access.json").write_text(
+        json.dumps(human), encoding="utf-8"
+    )
+    sandbox.git(opted_out, "commit", "-q", "-am", "opt out")
     feature = sandbox.root / "feature"
-    bare = sandbox.root / "bare"
     sandbox.git(machine.declared, "worktree", "add", "-q", str(feature), "feature")
-    sandbox.git(machine.declared, "worktree", "add", "-q", str(bare), "bare")
     (feature / "nested").mkdir()
     monkeypatch.setenv("CLAUDECODE", "1")
     assert f"credential={BOT}" in fill(feature / "nested").stdout
-    assert "password=human-secret" in fill(bare).stdout
+    assert "password=human-secret" in fill(opted_out).stdout
 
 
 @pytest.mark.parametrize(

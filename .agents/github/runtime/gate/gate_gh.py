@@ -1,13 +1,14 @@
-"""The `gh` shim: humans and undeclared repositories reach the real gh untouched."""
+"""The `gh` shim: humans and agents without App access reach the real gh untouched."""
 
 import os
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import assert_never
 
+from gate_access import Declarations
 from gate_agent import agent_host
-from gate_app import AppFactory, GitHubApp
-from gate_declaration import AppAccess, HumanAccess, committed
+from gate_app import GitHubApp
+from gate_declaration import AppAccess, HumanAccess
 from gate_error import GateError
 from gate_owner import gh_target, origin_owner, owners_in
 from gate_platform import MARKER, Platform
@@ -107,19 +108,19 @@ def run(
     arguments: Sequence[str],
     environment: Mapping[str, str],
     cwd: Path,
-    app_for: AppFactory,
+    declarations: Declarations,
     platform: Platform,
     now: float,
 ) -> int:
     real = real_gh(environment)
     if agent_host(environment) is None or not arguments or arguments[0] in NON_API:
         return platform.execute(real, arguments, None)
-    access = committed(cwd, environment)
+    access = declarations.resolve(cwd, environment, now)
     match access:
         case HumanAccess():
             return platform.execute(real, arguments, None)
         case AppAccess(slug=slug):
-            app = app_for(slug)
+            app = declarations.apps(slug)
             scoped = app_environment(arguments, environment, cwd, app, now)
             return platform.execute(real, arguments, scoped)
         case _:

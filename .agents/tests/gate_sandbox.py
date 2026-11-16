@@ -1,5 +1,6 @@
 """Isolated machines and a fake GitHub for the access gate's tests."""
 
+import base64
 import json
 import os
 import shutil
@@ -9,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from gate_app import GitHubError
 from gate_platform import Platform, SupportedPlatform
 from gate_private import write_private
 from github_gate import PLATFORMS
@@ -39,6 +41,7 @@ INSTALLATION_ID = 7
 FAR_FUTURE = 4_102_444_800
 NOW = 1_800_000_000.0
 CACHED_TOKEN = "ghs_" + "c" * 36
+OWNER_DEFAULT = "/.github/contents/.agents/github-access.json"
 
 
 def tool_directories() -> list[str]:
@@ -115,7 +118,7 @@ class Sandbox:
         self,
         name: str,
         declaration: Mapping[str, object] | None = None,
-        origin: str = f"https://github.com/{COVERED}/core.git",
+        origin: str | None = f"https://github.com/{COVERED}/core.git",
     ) -> Path:
         path = self.root / name
         self.git(self.root, "init", "-q", "-b", "main", str(path))
@@ -125,7 +128,8 @@ class Sandbox:
             target.write_text(json.dumps(declaration), encoding="utf-8")
             self.git(path, "add", ".agents/github-access.json")
         self.git(path, "commit", "-q", "--allow-empty", "-m", "initial")
-        self.git(path, "remote", "add", "origin", origin)
+        if origin is not None:
+            self.git(path, "remote", "add", "origin", origin)
         return path
 
     def enrol_cached(self, slug: str = SLUG) -> Path:
@@ -156,7 +160,11 @@ class Sandbox:
 
 @dataclass
 class FakeGitHub:
-    """GitHub's App endpoints for one App installed on `installed` accounts."""
+    """GitHub's App endpoints for one App installed on `installed` accounts.
+
+    `owner_defaults` holds each owner's `.github/.agents/github-access.json`; an owner
+    without one answers 404, and `owner_failure` makes every such read fail with it.
+    """
 
     slug: str = SLUG
     installed: Mapping[str, int] = field(
@@ -164,8 +172,17 @@ class FakeGitHub:
     )
     app_id: int = 101
     signed_as: int = 101
+    owner_defaults: dict[str, str] = field(default_factory=dict)
+    owner_failure: GitHubError | None = None
     calls: list[tuple[str, str, str | None]] = field(default_factory=list)
     issued: int = 0
+
+    def owner_reads(self) -> list[tuple[str, str | None]]:
+        return [
+            (path.split("/")[2], bearer)
+            for _, path, bearer in self.calls
+            if path.endswith(OWNER_DEFAULT)
+        ]
 
     def __call__(self, path: str, bearer: str | None, method: str) -> object:
         self.calls.append((method, path, bearer))
@@ -189,6 +206,14 @@ class FakeGitHub:
                 "token": f"ghs_issued{self.issued:032d}",
                 "expires_at": "2027-01-15T09:00:00Z",
             }
+        if path.endswith(OWNER_DEFAULT) and method == "GET":
+            owner = path.split("/")[2].lower()
+            if self.owner_failure is not None:
+                raise self.owner_failure
+            if owner not in self.owner_defaults:
+                raise GitHubError(f"GitHub GET {path} failed (HTTP 404)", 404)
+            content = base64.encodebytes(self.owner_defaults[owner].encode())
+            return {"type": "file", "encoding": "base64", "content": content.decode()}
         raise AssertionError(f"unexpected GitHub call {method} {path}")
 
 

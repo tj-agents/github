@@ -89,14 +89,14 @@ def parse(text: str | bytes) -> Access:
             assert_never(method)
 
 
-def committed(cwd: Path, environment: Mapping[str, str]) -> Access:
-    """Read the declaration committed at HEAD of the repository containing `cwd`.
+def committed(cwd: Path, environment: Mapping[str, str]) -> Access | None:
+    """The declaration committed at HEAD of the repository containing `cwd`.
 
-    Outside a repository, without a commit, or without the file, access is human.
-    An untracked or uncommitted file is ignored.
+    None outside a repository, before the first commit, or without the file. An
+    untracked or uncommitted file is ignored.
     """
     if git(["rev-parse", "--git-dir"], cwd, environment).returncode:
-        return HumanAccess()
+        return None
     result = git(
         ["cat-file", "--batch"], cwd, environment, f"HEAD:{DECLARATION}\n".encode()
     )
@@ -104,7 +104,7 @@ def committed(cwd: Path, environment: Mapping[str, str]) -> Access:
     if result.returncode or not header:
         raise DeclarationError(f"Git could not read the committed {DECLARATION}")
     if header.endswith(b" missing"):
-        return HumanAccess()
+        return None
     fields = header.split(b" ")
     if len(fields) != 3 or fields[1] != b"blob" or not fields[2].isdigit():
         raise DeclarationError(f"the committed {DECLARATION} is not a file")
@@ -115,7 +115,7 @@ def declared_app(cwd: Path, environment: Mapping[str, str]) -> str | None:
     """The App slug the repository containing `cwd` commits, if it declares one."""
     access = committed(cwd, environment)
     match access:
-        case HumanAccess():
+        case None | HumanAccess():
             return None
         case AppAccess(slug=slug):
             return slug

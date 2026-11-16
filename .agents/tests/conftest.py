@@ -13,6 +13,7 @@ sys.path.insert(
 sys.path.insert(0, str(Path(__file__).parents[1] / "github/runtime/gate"))
 sys.path.insert(0, str(Path(__file__).parent))
 
+from gate_access import Declarations
 from gate_app import Apps
 from gate_sandbox import (
     CURRENT_PLATFORM,
@@ -47,3 +48,9 @@ def github() -> FakeGitHub:
 @pytest.fixture
 def apps(sandbox: Sandbox, github: FakeGitHub) -> Apps:
     return Apps(sandbox.gate_home, CURRENT_PLATFORM, github, fake_sign)
+
+
+@pytest.fixture
+def declarations(sandbox: Sandbox, apps: Apps, github: FakeGitHub) -> Declarations:
+    cache = sandbox.gate_home / "owner-defaults"
+    return Declarations(apps, github, cache, CURRENT_PLATFORM)

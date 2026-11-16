@@ -51,13 +51,13 @@ def test_parse_rejects_anything_but_an_exact_declaration(
         parse(text)
 
 
-def test_committed_is_human_outside_a_repository_and_before_a_commit(
+def test_committed_is_absent_outside_a_repository_and_before_a_commit(
     sandbox: Sandbox,
 ) -> None:
-    assert committed(sandbox.neutral, sandbox.environment()) == HumanAccess()
+    assert committed(sandbox.neutral, sandbox.environment()) is None
     unborn = sandbox.root / "unborn"
     sandbox.git(sandbox.root, "init", "-q", str(unborn))
-    assert committed(unborn, sandbox.environment()) == HumanAccess()
+    assert committed(unborn, sandbox.environment()) is None
 
 
 def test_committed_ignores_an_untracked_or_uncommitted_declaration(
@@ -67,9 +67,9 @@ def test_committed_ignores_an_untracked_or_uncommitted_declaration(
     declaration = repository / ".agents/github-access.json"
     declaration.parent.mkdir()
     declaration.write_text(json.dumps(APP), encoding="utf-8")
-    assert committed(repository, sandbox.environment()) == HumanAccess()
+    assert committed(repository, sandbox.environment()) is None
     sandbox.git(repository, "add", ".agents/github-access.json")
-    assert committed(repository, sandbox.environment()) == HumanAccess()
+    assert committed(repository, sandbox.environment()) is None
 
 
 def test_committed_reads_head_from_subdirectories_and_each_worktree(
@@ -86,7 +86,7 @@ def test_committed_reads_head_from_subdirectories_and_each_worktree(
     sandbox.git(repository, "checkout", "-q", "-f", "main")
     linked = sandbox.root / "linked"
     sandbox.git(repository, "worktree", "add", "-q", str(linked), "bare-branch")
-    assert committed(linked, sandbox.environment()) == HumanAccess()
+    assert committed(linked, sandbox.environment()) is None
     declared = sandbox.root / "declared-linked"
     sandbox.git(repository, "worktree", "add", "-q", str(declared), "undeclared")
     (declared / "nested").mkdir()

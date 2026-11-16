@@ -1,9 +1,9 @@
 """The Git credential helper setup registers first for https://github.com.
 
-It prints nothing for humans and for repositories without an `app` declaration, so the
-human's own helpers that follow it answer exactly as before. For an agent in an `app`
-repository it answers with the App's installation token, or tells Git to quit; it never
-lets the human's helpers answer such an agent.
+It prints nothing for humans and for agents whose repository resolves to `human`, so the
+human's own helpers that follow it answer exactly as before. For an agent whose
+repository resolves to `app` it answers with the App's installation token, or tells Git
+to quit; it never lets the human's helpers answer such an agent.
 """
 
 from __future__ import annotations
@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
 
+from gate_access import Declarations
 from gate_agent import agent_host
-from gate_app import AppFactory, GitHubApp
-from gate_declaration import AppAccess, HumanAccess, committed
+from gate_app import GitHubApp
+from gate_declaration import AppAccess, HumanAccess
 from gate_error import GateError
 from gate_owner import origin_owner
 
@@ -111,15 +112,16 @@ def agent_reply(
     request: CredentialRequest,
     environment: Mapping[str, str],
     cwd: Path,
-    app_for: AppFactory,
+    declarations: Declarations,
     now: float,
 ) -> str:
-    access = committed(cwd, environment)
+    access = declarations.resolve(cwd, environment, now)
     match access:
         case HumanAccess():
             return ""
         case AppAccess(slug=slug):
-            return app_credential(request, environment, cwd, app_for(slug), now)
+            app = declarations.apps(slug)
+            return app_credential(request, environment, cwd, app, now)
         case _:
             assert_never(access)
 
@@ -129,13 +131,13 @@ def answer(
     request: CredentialRequest,
     environment: Mapping[str, str],
     cwd: Path,
-    app_for: AppFactory,
+    declarations: Declarations,
     now: float,
 ) -> Answer:
     if operation != "get" or not request.is_github or agent_host(environment) is None:
         return Answer("")
     try:
-        text = agent_reply(request, environment, cwd, app_for, now)
+        text = agent_reply(request, environment, cwd, declarations, now)
     except GateError as error:
         return Answer(QUIT, str(error))
     return Answer(text)
