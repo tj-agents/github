@@ -119,11 +119,12 @@ class Declarations:
                 f"cannot read {owner}'s default access from {owner}/{OWNER_REPOSITORY} "
                 f"({error}); agents in {owner} repositories stop until it can be read"
             ) from error
-        return Fetched(decoded(response, owner))
+        where = f"{owner}/{OWNER_REPOSITORY}/{DECLARATION}"
+        return Fetched(decoded(response, where))
 
 
-def decoded(response: object, owner: str) -> str:
-    where = f"{owner}/{OWNER_REPOSITORY}/{DECLARATION}"
+def decoded(response: object, where: str) -> str:
+    """The text of a file GitHub's contents API returned for `where`."""
     if (
         not isinstance(response, Mapping)
         or response.get("type") != "file"

@@ -25,6 +25,7 @@ from gate_git import git, machine_environment
 from gate_platform import Platform
 
 ENTRY = "github_gate.py"
+APPROVE = "github_approve.py"
 GITHUB = "https://github.com"
 BLOCK_BEGIN = "# >>> github@tj-agents access gate (written by setup; do not edit) >>>"
 BLOCK_END = "# <<< github@tj-agents access gate <<<"
@@ -75,6 +76,10 @@ class Machine:
     @property
     def script(self) -> Path:
         return self.runtime / ENTRY
+
+    @property
+    def approve_script(self) -> Path:
+        return self.runtime / APPROVE
 
     @property
     def launcher(self) -> Path:
@@ -150,30 +155,51 @@ def refresh_runtime(machine: Machine) -> list[str]:
     return changes
 
 
+def launchers(machine: Machine) -> list[tuple[Path, bytes]]:
+    """The commands setup installs in tj's bin directory, with their exact bytes."""
+    platform, python = machine.platform, machine.python
+    approve = machine.bin_directory / platform.approve_launcher_name()
+    return [
+        (machine.launcher, platform.launcher_bytes(python, machine.script)),
+        (approve, platform.approve_launcher_bytes(python, machine.approve_script)),
+    ]
+
+
 def check_launcher(machine: Machine) -> list[str]:
-    launcher = machine.launcher
-    expected = machine.platform.launcher_bytes(machine.python, machine.script)
-    if not launcher.is_file() or launcher.read_bytes() != expected:
-        return [f"{launcher} is missing or stale"]
+    problems = [
+        f"{launcher} is missing or stale"
+        for launcher, expected in launchers(machine)
+        if not launcher.is_file() or launcher.read_bytes() != expected
+    ]
     first = next(gh_on_path(machine.environment), None)
-    if first is None or first.resolve() != launcher.resolve():
-        return [
-            f"gh on PATH resolves to {first} instead of the gate's {launcher}; put "
-            f"{machine.bin_directory} before other gh locations on PATH"
-        ]
-    return []
+    if not problems and (
+        first is None or first.resolve() != machine.launcher.resolve()
+    ):
+        problems.append(
+            f"gh on PATH resolves to {first} instead of the gate's {machine.launcher}; "
+            f"put {machine.bin_directory} before other gh locations on PATH"
+        )
+    return problems
+
+
+def refuse_foreign_launchers(machine: Machine) -> None:
+    for launcher, _ in launchers(machine):
+        if launcher.exists() and not is_gate_launcher(launcher):
+            raise InstallError(
+                f"{launcher} was not installed by the gate; refusing to replace it"
+            )
 
 
 def install_launcher(machine: Machine) -> list[str]:
-    launcher = machine.launcher
-    if launcher.exists() and not is_gate_launcher(launcher):
-        raise InstallError(f"{launcher} is not the gate's gh; refusing to replace it")
-    expected = machine.platform.launcher_bytes(machine.python, machine.script)
-    if launcher.is_file() and launcher.read_bytes() == expected:
-        return []
-    machine.bin_directory.mkdir(parents=True, exist_ok=True)
-    machine.platform.write_launcher(launcher, expected)
-    return [f"installed {launcher}"]
+    refuse_foreign_launchers(machine)
+    changes: list[str] = []
+    for launcher, expected in launchers(machine):
+        if launcher.is_file() and launcher.read_bytes() == expected:
+            continue
+        machine.bin_directory.mkdir(parents=True, exist_ok=True)
+        machine.platform.write_launcher(launcher, expected)
+        changes.append(f"installed {launcher}")
+    return changes
 
 
 def parse_entries(output: bytes, *, with_origin: bool) -> list[ConfigEntry]:
@@ -443,6 +469,7 @@ def check(machine: Machine, cwd: Path, apps: Apps) -> list[str]:
 
 
 def setup(machine: Machine) -> list[str]:
+    refuse_foreign_launchers(machine)
     return [
         *refresh_runtime(machine),
         *install_launcher(machine),

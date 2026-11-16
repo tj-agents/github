@@ -4,6 +4,7 @@
   "profiles": {
     "core": [
       "access",
+      "approve",
       "collaboration",
       "configuration"
     ]
@@ -22,6 +23,21 @@
         "git",
         "Git Credential Manager",
         "secure credential backend"
+      ],
+      "provenance": [
+        "house"
+      ]
+    },
+    {
+      "name": "approve",
+      "kind": "utility",
+      "profile": "core",
+      "applicability": [
+        "repositories whose GitHub access resolves to app"
+      ],
+      "requires": [
+        "tj",
+        "agent-store"
       ],
       "provenance": [
         "house"

@@ -93,10 +93,11 @@ python -B <plugin>/.agents/github/runtime/gate/github_gate.py setup --check
 ```
 
 Setup copies the runtime to `~/.agents-state/github-gate/runtime/` (`AGENT_STATE_DIRECTORY`
-moves it). It also installs the `gh` shim (`gh.exe` on Windows) in tj's bin directory:
-`%LOCALAPPDATA%\Programs\tj` on Windows, otherwise `~/.local/bin`, or `TJ_BIN_DIR`. That
-directory must come before the real `gh` on `PATH`; the shim finds the real `gh` by skipping its
-own launchers. Setup then appends a marked block to the end of your global Git configuration:
+moves it). It also installs the `gh` shim (`gh.exe` on Windows) and the `tj-approve`
+launcher (`tj-approve.cmd` on Windows) in tj's bin directory: `%LOCALAPPDATA%\Programs\tj` on
+Windows, otherwise `~/.local/bin`, or `TJ_BIN_DIR`. That directory must come before the real
+`gh` on `PATH`; the shim finds the real `gh` by skipping its own launchers. Setup refuses to
+replace a `gh` or `tj-approve` there that it did not install. Setup then appends a marked block to the end of your global Git configuration:
 
 ```text
 # >>> github@tj-agents access gate (written by setup; do not edit) >>>
@@ -129,6 +130,35 @@ Onboarding reads the App's public id from GitHub, verifies that the key signs as
 stores it readable only by you, and lists the accounts the App is installed on. It never prints
 the key or a token. To cover another account, install the App on it in GitHub; no local change
 is needed. Create a new App in GitHub's settings, then enrol its key.
+
+### Approving the App's pull requests
+
+The App opens pull requests; you approve them as yourself with `tj approve`, which `tj` runs
+through the `tj-approve` launcher setup installs. An agent hands you the line with the
+session it worked in:
+
+```text
+tj approve --session claude:<session-id>
+```
+
+It finds that session's work items in agent-store, including those of sessions and launches it
+started, and asks `tj item` for their pull requests. It keeps an open pull request only when its
+author is the App that the pull request's repository declares, read from GitHub (the
+repository's file on the base branch, then the owner's `.github` default). You must also not
+have approved its current head, unless a review from you is requested. It lists them, asks you
+to type `yes`, then approves each and arms squash auto-merge pinned to the approved head. It
+exits non-zero if any approval or auto-merge fails.
+
+It always runs the real `gh`, never the gate's shim, with your own login. It removes
+`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `GH_TOKEN`, `GITHUB_TOKEN`,
+`GH_CONFIG_DIR` and every `GIT_CONFIG*` variable from the environment of each command it runs.
+Your reviewer identity is whatever `gh api user` reports.
+
+`tj approve` refuses to run unless its input is a terminal you can type into (on Windows, a
+console with a window). An agent's tool calls have no terminal, so an agent cannot approve its
+own work by running it. The `!` shell inside a Claude Code or Codex session is expected to have
+no terminal either, so run it in your own terminal with `--session`. Without `--session` it
+uses the agent session named by the terminal's own environment, if any.
 
 ### Limits
 
