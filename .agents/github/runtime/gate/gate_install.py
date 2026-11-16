@@ -108,27 +108,36 @@ class Machine:
         return home_config
 
 
-def runtime_sources(source: Path) -> dict[str, bytes]:
+def runtime_files(directory: Path) -> list[Path]:
+    """Files below `directory`, as relative paths, without Python's caches."""
+    return [
+        path.relative_to(directory)
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+        and "__pycache__" not in path.relative_to(directory).parts
+        and path.suffix != ".pyc"
+    ]
+
+
+def runtime_sources(source: Path) -> dict[Path, bytes]:
     return {
-        path.name: path.read_bytes()
-        for path in sorted(source.iterdir())
-        if path.is_file() and path.suffix != ".pyc"
+        relative: (source / relative).read_bytes() for relative in runtime_files(source)
     }
 
 
 def check_runtime(machine: Machine) -> list[str]:
     expected = runtime_sources(machine.source)
     problems = [
-        f"{machine.runtime / name} is missing or stale"
-        for name, content in expected.items()
-        if not (machine.runtime / name).is_file()
-        or (machine.runtime / name).read_bytes() != content
+        f"{machine.runtime / relative} is missing or stale"
+        for relative, content in expected.items()
+        if not (machine.runtime / relative).is_file()
+        or (machine.runtime / relative).read_bytes() != content
     ]
     if machine.runtime.is_dir():
         problems.extend(
-            f"{path} is not part of the gate runtime"
-            for path in sorted(machine.runtime.iterdir())
-            if path.is_file() and path.name not in expected
+            f"{machine.runtime / relative} is not part of the gate runtime"
+            for relative in runtime_files(machine.runtime)
+            if relative not in expected
         )
     return problems
 
@@ -137,21 +146,22 @@ def refresh_runtime(machine: Machine) -> list[str]:
     expected = runtime_sources(machine.source)
     machine.runtime.mkdir(parents=True, exist_ok=True)
     changes: list[str] = []
-    for name, content in expected.items():
-        target = machine.runtime / name
+    for relative, content in expected.items():
+        target = machine.runtime / relative
         if target.is_file() and target.read_bytes() == content:
             continue
-        temporary = target.with_name(f".{name}.{os.getpid()}.next")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f".{target.name}.{os.getpid()}.next")
         try:
             temporary.write_bytes(content)
             temporary.replace(target)
         finally:
             temporary.unlink(missing_ok=True)
         changes.append(f"refreshed {target}")
-    for path in sorted(machine.runtime.iterdir()):
-        if path.is_file() and path.name not in expected:
-            path.unlink()
-            changes.append(f"removed {path}")
+    for relative in runtime_files(machine.runtime):
+        if relative not in expected:
+            (machine.runtime / relative).unlink()
+            changes.append(f"removed {machine.runtime / relative}")
     return changes
 
 

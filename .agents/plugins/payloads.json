@@ -9,6 +9,11 @@
       "plugin": "github",
       "source": ".agents/github/runtime",
       "destination": ".agents/github/runtime"
+    },
+    {
+      "plugin": "github",
+      "distribution": "tj-cli",
+      "destination": ".agents/github/runtime/gate"
     }
   ]
 }

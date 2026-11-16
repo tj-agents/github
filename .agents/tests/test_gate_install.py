@@ -1,10 +1,12 @@
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from gate_install import BLOCK_BEGIN, BLOCK_END
-from gate_sandbox import CURRENT_PLATFORM, GATE_SOURCE, Sandbox
-from github_gate import main
+from gate_app import Apps
+from gate_install import BLOCK_BEGIN, BLOCK_END, check, setup
+from gate_sandbox import CURRENT_PLATFORM, GATE_SOURCE, FakeGitHub, Sandbox, fake_sign
+from github_gate import machine_for, main
 
 GH = "!'C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe' auth git-credential"
 GH_HELPER = f'helper = "{GH}"'
@@ -221,3 +223,29 @@ def test_setup_writes_only_the_gate_runtime_its_gh_and_the_global_config(
         *runtime,
     ]
     assert written == sorted(expected)
+
+
+def test_setup_copies_shipped_packages_and_removes_stale_files(
+    sandbox: Sandbox,
+) -> None:
+    shipped = sandbox.root / "plugin" / "gate"
+    shutil.copytree(GATE_SOURCE, shipped, ignore=shutil.ignore_patterns("__pycache__"))
+    (shipped / "tj_cli" / "clipboard").mkdir(parents=True)
+    (shipped / "tj_cli" / "clipboard" / "__init__.py").write_text("", encoding="utf-8")
+    environment = sandbox.environment()
+    machine = machine_for(
+        environment, CURRENT_PLATFORM, shipped / "github_gate.py", sandbox.neutral
+    )
+    setup(machine)
+    copied = machine.runtime / "tj_cli" / "clipboard" / "__init__.py"
+    assert copied.is_file()
+    stale = machine.runtime / "tj_cli" / "retired.py"
+    stale.write_text("", encoding="utf-8")
+    assert f"{stale} is not part of the gate runtime" in check(
+        machine,
+        sandbox.neutral,
+        Apps(sandbox.gate_home, CURRENT_PLATFORM, FakeGitHub(), fake_sign),
+    )
+    setup(machine)
+    assert not stale.exists()
+    assert copied.is_file()

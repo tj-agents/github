@@ -10,12 +10,12 @@ from typing import Any
 import github_approve
 import pytest
 from gate_sandbox import CURRENT_PLATFORM, Sandbox, fake_gh, tool_directories
+from gate_session import SessionError, descendant_items
 from github_approve import (
     Approval,
     ApproveError,
     app_authored,
     approve,
-    descendant_items,
     human_environment,
 )
 from github_gate import main as gate_main
@@ -419,7 +419,7 @@ def test_an_explicit_session_overrides_inherited_ones() -> None:
 
 def test_an_unknown_explicit_session_fails_without_reading_anything_else() -> None:
     tools = tools_with_work()
-    with pytest.raises(ApproveError, match="unknown agent session codex:missing"):
+    with pytest.raises(SessionError, match="unknown agent session codex:missing"):
         run_approval(tools, handle="codex:missing")
     assert [command for command, _, _ in tools.calls] == [
         ["agent-store", "show", "codex:missing"]
@@ -461,7 +461,7 @@ def test_descendants_walk_unlinked_ancestors_and_ignore_unrelated_cycles() -> No
         ],
     )
     approval = Approval("gh", "tj", "agent-store", {}, tools, print)
-    assert set(descendant_items(approval, "codex:root")) == {
+    assert set(descendant_items(approval.sessions, "codex:root")) == {
         ref(10)["ref"],
         ref(11)["ref"],
     }
