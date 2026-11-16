@@ -3,7 +3,7 @@
 Only the human runs `tj approve`; agents are denied it by their hosts' permissions. It
 approves only open pull requests, linked to the session's work items, that the GitHub
 App their repository declares opened and that await your approval at their current
-head, after you type yes, then arms squash auto-merge.
+head, then arms squash auto-merge, printing each pull request it approved.
 """
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ REMOVED = frozenset(
         "GH_REPO",
     }
 )
-CONFIRMATION = "yes"
 
 
 class ApproveError(GateError):
@@ -108,7 +107,6 @@ class Approval:
     environment: Mapping[str, str]
     run: Run
     out: Callable[[str], None]
-    ask: Callable[[str], str]
     apps: dict[tuple[str, str, str], str | None] = field(default_factory=dict)
     owners: dict[str, str | None] = field(default_factory=dict)
 
@@ -385,13 +383,6 @@ def approve(
         return 0
     for item in waiting:
         approval.out(f"{item.name}  {item.title}")
-    question = (
-        f"Approve {len(waiting)} pull request(s) as {reviewer}? "
-        f"Type {CONFIRMATION} to approve: "
-    )
-    if approval.ask(question).strip().lower() != CONFIRMATION:
-        approval.out("Nothing approved.")
-        return 0
     failed = False
     for item in waiting:
         result = approval.output([approval.gh, "pr", "review", "--approve", item.url])
@@ -435,17 +426,6 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def confirmation(question: str) -> str:
-    """Read the human's answer from standard input."""
-    try:
-        return input(question)
-    except (EOFError, RuntimeError) as error:
-        raise ApproveError(
-            "could not read your answer: standard input gave no line to type yes "
-            "into; nothing approved"
-        ) from error
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
     inherited = dict(os.environ)
@@ -458,7 +438,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             environment=environment,
             run=run_captured,
             out=print,
-            ask=confirmation,
         )
         return approve(approval, inherited, arguments.session)
     except (GateError, OSError) as error:
