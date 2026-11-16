@@ -236,11 +236,10 @@ def test_pending_review_restricts_endpoint_permission_and_payload(
             ),
             default_repository="employer/private-project",
         )
+    comment = {"path": "a.cs", "line": 1, "side": "RIGHT", "body": "Review\ncomment"}
     data = {
         "commit_id": "a" * 40,
-        "comments": [
-            {"path": "a.cs", "line": 1, "side": "RIGHT", "body": "Review\ncomment"}
-        ],
+        "comments": [comment],
     }
     assert (
         json.loads(github_tools.validate_pending_review_input(json.dumps(data))) == data
@@ -250,7 +249,7 @@ def test_pending_review_restricts_endpoint_permission_and_payload(
         {**data, "event": "COMMENT"},
         {**data, "commit_id": "main"},
         {**data, "comments": []},
-        {**data, "comments": [{**data["comments"][0], "line": True}]},
+        {**data, "comments": [{**comment, "line": True}]},
     ]:
         with pytest.raises(AccessError):
             github_tools.validate_pending_review_input(json.dumps(bad))
@@ -280,13 +279,15 @@ def test_pending_review_payload_reaches_gh_and_rejected_input_never_reads_vault(
     executable = tmp_path / "gh"
     executable.touch()
     vault = FakeVault()
-    captured = []
+    captured: list[str] = []
 
     def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        captured.append(kwargs["input"])
-        return subprocess.CompletedProcess(args, 0, '{"state":"PENDING"}', "")
+        value = kwargs["input"]
+        assert isinstance(value, str)
+        captured.append(value)
+        return subprocess.CompletedProcess("gh", 0, '{"state":"PENDING"}', "")
 
-    monkeypatch.setattr(github_tools.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     args = (
         "api",
         "repos/employer/private-project/pulls/25/reviews",
