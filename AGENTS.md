@@ -21,7 +21,9 @@ opening, then use a concrete fenced example before additional explanatory prose 
 starter's explicit unfinished placeholder is not an example, so replace it with real behaviour before committing
 because the guidance-example check rejects it.
 
-Every skill here is a `utility`. Its scripts and templates sit beside its `SKILL.md`.
+Every skill here is a `utility`. Its scripts and templates sit beside its `SKILL.md`. Tooling that is not a skill,
+the GitHub access gate, lives in `.agents/github/runtime/gate/`; a payload resource ships it, the harness
+`requires.setup` installs it, and the README documents it.
 
 <!-- BEGIN personal:rules sha256:c4f6a57dde7e906bd13bad312f0042408f0c01ce0c9855968d7b7fa3907b5dc8 -->
 # Personal rules
