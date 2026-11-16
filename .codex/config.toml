@@ -13,6 +13,9 @@ enabled = true
 [plugins."agent@tj-agents"]
 enabled = true
 
+[plugins."azure@tj-agents"]
+enabled = true
+
 [plugins."base@tj-agents"]
 enabled = true
 
