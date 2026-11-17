@@ -259,7 +259,7 @@ def read_config(
         **machine_environment(machine.environment),
         "GIT_CEILING_DIRECTORIES": str(machine.neutral.parent),
     }
-    result = git(["config", "--null", *arguments], machine.neutral, environment, stdin)
+    result = git(["config", *arguments, "--null"], machine.neutral, environment, stdin)
     if result.returncode and (result.stdout or result.stderr):
         raise InstallError("Git could not read its configuration")
     return parse_entries(result.stdout, with_origin="--show-origin" in arguments)
@@ -340,45 +340,6 @@ def include_target(entry: ConfigEntry, git_home: Path) -> Path | None:
     return Path(origin).parent / target
 
 
-def check_credential_paths(machine: Machine) -> list[str]:
-    entries = read_config(
-        machine,
-        [
-            "--show-origin",
-            "--type=bool",
-            "--get-regexp",
-            r"^credential\..*\.usehttppath$",
-        ],
-    )
-    problems: list[str] = []
-    for entry in entries:
-        subsection = entry.key[len("credential.") : -len(".usehttppath")]
-        if entry.value != "false" or applies(subsection) is not Applies.SOMETIMES:
-            continue
-        effective = git(
-            [
-                "config",
-                "--type=bool",
-                "--get-urlmatch",
-                "credential.useHttpPath",
-                subsection,
-            ],
-            machine.neutral,
-            {
-                **machine_environment(machine.environment),
-                "GIT_CEILING_DIRECTORIES": str(machine.neutral.parent),
-            },
-        )
-        if effective.returncode:
-            raise InstallError("Git could not read its credential path setting")
-        if effective.stdout.strip() == b"false":
-            problems.append(
-                f"{entry.origin}: {entry.key}=false hides the GitHub repository path; "
-                "remove this conflicting useHttpPath setting and rerun setup"
-            )
-    return problems
-
-
 def conditional_helpers(machine: Machine, entries: Sequence[ConfigEntry]) -> list[str]:
     """Conditional includes that add github.com helpers the gate would reorder."""
     problems: list[str] = []
@@ -411,7 +372,6 @@ def render_block(helper_command: str, helpers: Sequence[str]) -> str:
         BLOCK_BEGIN,
         BLOCK_NOTE.rstrip("\n"),
         f'[credential "{GITHUB}"]',
-        "\tuseHttpPath = true",
         "\thelper =",
         f"\thelper = {quoted(helper_command)}",
         *(f"\thelper = {quoted(helper)}" for helper in helpers),
@@ -474,10 +434,7 @@ def expected_block(machine: Machine, current: str | None) -> str:
     if current is not None:
         block = read_config(machine, ["--file", "-", "--list"], current.encode())
         entries = without_block(entries, block)
-    problems = [
-        *check_credential_paths(machine),
-        *conditional_helpers(machine, entries),
-    ]
+    problems = conditional_helpers(machine, entries)
     if problems:
         raise InstallError("; ".join(problems))
     return render_block(machine.helper_command, human_helpers(entries))
@@ -500,7 +457,7 @@ def check_git_config(machine: Machine) -> list[str]:
     if text.block != expected:
         problems.append(
             f"{path}: the gate's block is stale; the github.com helpers it re-adds or "
-            "the gate command or useHttpPath setting changed"
+            "the gate command changed"
         )
     return problems
 
