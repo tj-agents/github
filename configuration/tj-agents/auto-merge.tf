@@ -1,31 +1,9 @@
+data "github_repositories" "active" {
+  query = "org:tj-agents archived:false"
+}
+
 locals {
-  auto_merge_repositories = toset([
-    ".github",
-    "agent",
-    "agent-store",
-    "aspire",
-    "azure",
-    "bash",
-    "cli",
-    "core",
-    "cpp",
-    "docs",
-    "dotnet",
-    "github",
-    "github-actions",
-    "handy",
-    "learning",
-    "marketplace",
-    "nvim",
-    "personal",
-    "python",
-    "react",
-    "renovate-config",
-    "rust",
-    "template",
-    "work",
-    "work-items",
-  ])
+  auto_merge_repositories = toset(data.github_repositories.active.names)
 }
 
 module "auto_merge" {
