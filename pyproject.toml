@@ -56,6 +56,11 @@ filterwarnings = ["error"]
 raises-require-match-for = ["*"]
 
 [[tool.python-standards.exceptions]]
+path = ".agents/tests/gate_sandbox.py"
+rule = "PY016"
+reason = "The native test harness resolves real Git from the launching environment before constructing isolated child environments."
+
+[[tool.python-standards.exceptions]]
 path = ".agents/github/utility/collaboration/scripts/github_collaboration.py"
 rule = "PY001"
 reason = "Existing host integration traversal flattens nested records."

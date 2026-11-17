@@ -35,9 +35,9 @@ def effective_directory(
     cwd: Path,
     environment: Mapping[str, str],
 ) -> Path | None:
-    try:
-        result = subprocess.run(
-            [str(executable), *prefix, "rev-parse", "--show-toplevel"],
+    def resolve(*options: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(executable), *prefix, "rev-parse", *options],
             cwd=cwd,
             env=dict(environment),
             text=True,
@@ -47,6 +47,14 @@ def effective_directory(
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
+
+    try:
+        result = resolve("--show-toplevel")
+        if result.returncode:
+            bare = resolve("--is-bare-repository")
+            if bare.returncode or bare.stdout.strip() != "true":
+                return None
+            result = resolve("--absolute-git-dir")
     except (OSError, subprocess.SubprocessError) as error:
         raise GateError(
             "credential-client-unavailable: Git target lookup failed"
@@ -70,7 +78,7 @@ def main() -> int:
         ):
             return execute(executable, arguments, cwd, environment)
         from credentials.context import Context
-        from credentials.model import Client
+        from credentials.model import Client, CredentialError
 
         home = Path(environment.get("USERPROFILE") or environment.get("HOME") or "~")
         state = Path(
@@ -81,7 +89,10 @@ def main() -> int:
         target = effective_directory(executable, prefix, cwd, environment)
         if target is None:
             return execute(executable, arguments, cwd, environment)
-        context = Context.load(target, environment, state, windows=os.name == "nt")
+        try:
+            context = Context.load(target, environment, state, windows=os.name == "nt")
+        except CredentialError:
+            return execute(executable, arguments, cwd, environment)
         if context.declaration is not None and context.declaration.supports(Client.GIT):
             arguments = [
                 "-c",

@@ -87,13 +87,16 @@ def test_setup_preserves_the_existing_human_path_setting(sandbox: Sandbox) -> No
         "false",
     )
     assert main(["setup"]) == 0
-    assert sandbox.git(
-        sandbox.neutral,
-        "config",
-        "--get-urlmatch",
-        "credential.useHttpPath",
-        "https://github.com/Example/other.git",
-    ).strip() == "false"
+    assert (
+        sandbox.git(
+            sandbox.neutral,
+            "config",
+            "--get-urlmatch",
+            "credential.useHttpPath",
+            "https://github.com/Example/other.git",
+        ).strip()
+        == "false"
+    )
 
 
 def append_after_block(sandbox: Sandbox) -> None:
