@@ -59,9 +59,14 @@ class Declarations:
         return self.owner_default(owner, now)
 
     def owner_default(self, owner: str, now: float) -> Access:
+        token = self.reader(owner, now)
+        if token is None:
+            # No App enrolled here is installed on this owner, so no default could make
+            # agents act as an App: never look the owner up, and keep its normal access.
+            return HumanAccess()
         fetched = self.cached(owner, now)
         if fetched is None:
-            fetched = self.read(owner, now)
+            fetched = self.read(owner, token)
             write_private(
                 self.cache_path(owner),
                 json.dumps({"fetched": now, "text": fetched.text}).encode(),
@@ -108,10 +113,10 @@ class Declarations:
                 return app.installation_token(owner, now)
         return None
 
-    def read(self, owner: str, now: float) -> Fetched:
+    def read(self, owner: str, token: str) -> Fetched:
         path = f"/repos/{owner}/{OWNER_REPOSITORY}/contents/{DECLARATION}"
         try:
-            response = self.fetch(path, self.reader(owner, now), "GET")
+            response = self.fetch(path, token, "GET")
         except GitHubError as error:
             if error.status == 404:
                 return Fetched(None)
