@@ -78,7 +78,7 @@ def add_human_helper(sandbox: Sandbox) -> None:
     )
 
 
-def test_setup_makes_git_include_each_requested_repository(sandbox: Sandbox) -> None:
+def test_setup_preserves_the_existing_human_path_setting(sandbox: Sandbox) -> None:
     sandbox.git(
         sandbox.neutral,
         "config",
@@ -93,7 +93,7 @@ def test_setup_makes_git_include_each_requested_repository(sandbox: Sandbox) -> 
         "--get-urlmatch",
         "credential.useHttpPath",
         "https://github.com/Example/other.git",
-    ).strip() == "true"
+    ).strip() == "false"
 
 
 def append_after_block(sandbox: Sandbox) -> None:
@@ -236,6 +236,7 @@ def test_setup_writes_only_the_gate_runtime_its_gh_and_the_global_config(
         *(
             f"bin/{CURRENT_PLATFORM.command_launcher_name(name)}"
             for name in (
+                "git",
                 "tj-credentials",
                 "nuget-plugin-tj-credentials",
                 "dotnet",

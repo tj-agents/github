@@ -3,7 +3,6 @@
 import base64
 import json
 import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -15,6 +14,7 @@ from gate_error import GateError
 from gate_handover import Handover
 from gate_platform import Platform, SupportedPlatform
 from gate_private import write_private
+from gate_program import real_program
 from github_gate import PLATFORMS
 
 GATE_SOURCE = Path(__file__).parents[1] / "github/runtime/gate"
@@ -47,8 +47,7 @@ OWNER_DEFAULT = "/.github/contents/.agents/github-access.json"
 
 
 def tool_directories() -> list[str]:
-    git = shutil.which("git")
-    assert git is not None, "the tests need Git"
+    git = real_program("git", os.environ)
     directories = [Path(git).parent]
     for root in Path(git).resolve().parents[1:3]:
         if (root / "usr/bin/sh.exe").is_file():

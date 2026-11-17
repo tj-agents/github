@@ -85,6 +85,15 @@ def test_real_dotnet_restore_uses_native_provider_and_keeps_secret_out_of_config
     ).stdout.strip()
     major = int(version.split(".")[0])
     assert major >= 9, "native provider acceptance requires a supported SDK"
+    sdks = subprocess.run(
+        [str(executable), "--list-sdks"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    sdk = next(line for line in sdks if line.startswith(version + " ["))
+    sdk_root = Path(sdk.split("[", 1)[1].removesuffix("]")).parent
     installed = tmp_path / "runtime"
     shutil.copytree(
         GATE_SOURCE, installed, ignore=shutil.ignore_patterns("__pycache__")
@@ -134,7 +143,9 @@ def test_real_dotnet_restore_uses_native_provider_and_keeps_secret_out_of_config
             )
             environment = Sandbox(tmp_path).environment()
             environment.update(
-                PATH=str(commands) + os.pathsep + environment.get("PATH", ""),
+                PATH=os.pathsep.join(
+                    (str(commands), str(sdk_root), environment.get("PATH", ""))
+                ),
                 NUGET_PACKAGES=str(tmp_path / "packages"),
                 NUGET_HTTP_CACHE_PATH=str(tmp_path / "http-cache"),
                 NUGET_PLUGINS_CACHE_PATH=str(tmp_path / "plugin-cache"),

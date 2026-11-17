@@ -3,6 +3,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from gate_error import GateError
+from gate_program import real_program
 
 TIMEOUT_SECONDS = 30
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -23,7 +24,7 @@ def git(
 ) -> subprocess.CompletedProcess[bytes]:
     try:
         return subprocess.run(
-            ["git", *arguments],
+            [str(real_program("git", environment)), *arguments],
             cwd=cwd,
             env=dict(environment),
             input=stdin,

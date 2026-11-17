@@ -173,6 +173,12 @@ def launchers(machine: Machine) -> list[tuple[Path, bytes]]:
     result = [
         (machine.launcher, platform.launcher_bytes(python, machine.script)),
         (approve, platform.approve_launcher_bytes(python, machine.approve_script)),
+        (
+            machine.bin_directory / platform.command_launcher_name("git"),
+            platform.command_launcher_bytes(
+                python, machine.runtime / "git_client.py", ()
+            ),
+        ),
     ]
     entry = machine.runtime / "tj_credentials.py"
     commands = {
@@ -366,7 +372,6 @@ def render_block(helper_command: str, helpers: Sequence[str]) -> str:
         BLOCK_BEGIN,
         BLOCK_NOTE.rstrip("\n"),
         f'[credential "{GITHUB}"]',
-        "\tuseHttpPath = true",
         "\thelper =",
         f"\thelper = {quoted(helper_command)}",
         *(f"\thelper = {quoted(helper)}" for helper in helpers),
