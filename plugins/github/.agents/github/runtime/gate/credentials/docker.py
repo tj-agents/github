@@ -173,8 +173,7 @@ def run(
         if not endpoints:
             continue
         current = context.service(credential)
-        current.check(now)
-        saved = Saved(credential.login, current.secret(now))
+        saved = Saved(credential.login, current.authorize(now))
         for endpoint in endpoints:
             registry = urllib.parse.urlsplit(endpoint.url).netloc
             synchronize(helper(registry, context), registry, saved, context.environment)

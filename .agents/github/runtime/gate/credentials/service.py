@@ -28,12 +28,8 @@ class Service:
     provider: CredentialProvider
     transport: http.Transport
 
-    def check(self, now: datetime) -> Health:
-        enrollment = self.state.active()
-        if enrollment is None:
-            raise CredentialError(f"credential-missing: {self.credential.action}")
-        enrollment.status(self.credential, now)
-        secret = self.vault.read(enrollment.version)
+    def _inspect(self, now: datetime) -> tuple[Health, Secret]:
+        enrollment, secret = self.state.snapshot(self.vault, now)
         actual_expiry = self.provider.verify(self.credential, secret, self.transport)
         expiry = (
             min(actual_expiry, enrollment.expires_at)
@@ -49,12 +45,23 @@ class Service:
                 expiry.isoformat(),
                 self.credential.action,
             )
-        return Health(
-            self.credential.name,
-            status,
-            expiry.isoformat(),
-            self.credential.action if status == "expiring" else None,
+        return (
+            Health(
+                self.credential.name,
+                status,
+                expiry.isoformat(),
+                self.credential.action if status == "expiring" else None,
+            ),
+            secret,
         )
+
+    def check(self, now: datetime) -> Health:
+        health, _ = self._inspect(now)
+        return health
+
+    def authorize(self, now: datetime) -> Secret:
+        _, secret = self._inspect(now)
+        return secret
 
     def onboard(self, secret: Secret, expires_at: datetime, now: datetime) -> Health:
         if expires_at.tzinfo is None or not now < expires_at <= now + timedelta(
@@ -78,6 +85,3 @@ class Service:
             expiry.isoformat(),
             self.credential.action if status == "expiring" else None,
         )
-
-    def secret(self, now: datetime) -> Secret:
-        return self.state.read(self.vault, now)

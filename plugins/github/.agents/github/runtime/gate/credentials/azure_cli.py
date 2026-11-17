@@ -51,7 +51,7 @@ def run(
     if not supplied:
         command.extend(("--organization", organization))
     current = context.service(credential)
-    current.check(now)
+    secret = current.authorize(now)
     environment = private_environment(context.environment)
-    environment["AZURE_DEVOPS_EXT_PAT"] = current.secret(now).value
+    environment["AZURE_DEVOPS_EXT_PAT"] = secret.value
     return children.execute(executable, command, context.cwd, environment)

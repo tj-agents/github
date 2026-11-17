@@ -312,9 +312,22 @@ class State:
                     )
         return candidate
 
-    def read(self, vault: Vault, now: datetime) -> Secret:
+    def snapshot(self, vault: Vault, now: datetime) -> tuple[Enrollment, Secret]:
         active = self.active()
         if active is None:
             raise CredentialError(f"credential-missing: {self.credential.action}")
         active.status(self.credential, now)
-        return vault.read(active.version)
+        try:
+            secret = vault.read(active.version)
+        except CredentialError:
+            replacement = self.active()
+            if replacement is None or replacement == active:
+                raise
+            replacement.status(self.credential, now)
+            return replacement, vault.read(replacement.version)
+        else:
+            return active, secret
+
+    def read(self, vault: Vault, now: datetime) -> Secret:
+        _, secret = self.snapshot(vault, now)
+        return secret

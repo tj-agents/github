@@ -152,8 +152,7 @@ def run(
                 "credential-request-invalid: review JSON must arrive on stdin"
             )
         input_text = commands.validate_pending_review_input(input_stream.read(131073))
-    service.check(now)
-    secret = service.secret(now)
+    secret = service.authorize(now)
     with tempfile.TemporaryDirectory(prefix="tj-credentials-gh-") as directory:
         try:
             result = subprocess.run(

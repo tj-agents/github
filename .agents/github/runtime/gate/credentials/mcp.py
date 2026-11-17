@@ -387,8 +387,7 @@ def _upstream_call(
     )
     if service is None:
         raise MCPError(-32602, "tool repository has no declared credential")
-    service.check(now)
-    token = service.secret(now).value
+    token = service.authorize(now).value
     binary = mcp_install.check(context.state_root, release)
     try:
         process = subprocess.Popen(
