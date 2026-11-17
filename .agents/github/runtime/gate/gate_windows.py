@@ -42,11 +42,21 @@ def launcher_stub() -> bytes:
 
 
 def launcher_bytes(python: Path, script: Path) -> bytes:
+    return command_launcher_bytes(python, script, ("gh",))
+
+
+def command_launcher_name(name: str) -> str:
+    return name + ".exe"
+
+
+def command_launcher_bytes(
+    python: Path, script: Path, arguments: Sequence[str]
+) -> bytes:
     main = (
         f"# {MARKER}\n"
         "import runpy, sys\n"
         f"sys.path.insert(0, {str(script.parent)!r})\n"
-        f"sys.argv = [{str(script)!r}, 'gh', *sys.argv[1:]]\n"
+        f"sys.argv = [{str(script)!r}, *{tuple(arguments)!r}, *sys.argv[1:]]\n"
         f"runpy.run_path({str(script)!r}, run_name='__main__')\n"
     )
     archive = io.BytesIO()
