@@ -259,7 +259,7 @@ def read_config(
         **machine_environment(machine.environment),
         "GIT_CEILING_DIRECTORIES": str(machine.neutral.parent),
     }
-    result = git(["config", *arguments, "--null"], machine.neutral, environment, stdin)
+    result = git(["config", "--null", *arguments], machine.neutral, environment, stdin)
     if result.returncode and (result.stdout or result.stderr):
         raise InstallError("Git could not read its configuration")
     return parse_entries(result.stdout, with_origin="--show-origin" in arguments)
@@ -340,8 +340,53 @@ def include_target(entry: ConfigEntry, git_home: Path) -> Path | None:
     return Path(origin).parent / target
 
 
-def conditional_helpers(machine: Machine, entries: Sequence[ConfigEntry]) -> list[str]:
-    """Conditional includes that add github.com helpers the gate would reorder."""
+def check_credential_paths(
+    machine: Machine, arguments: Sequence[str] = ()
+) -> list[str]:
+    entries = read_config(
+        machine,
+        [
+            *arguments,
+            "--show-origin",
+            "--type=bool",
+            "--get-regexp",
+            r"^credential\..*\.usehttppath$",
+        ],
+    )
+    problems: list[str] = []
+    for entry in entries:
+        subsection = entry.key[len("credential.") : -len(".usehttppath")]
+        if entry.value != "false" or applies(subsection) is not Applies.SOMETIMES:
+            continue
+        effective = git(
+            [
+                "config",
+                *arguments,
+                "--type=bool",
+                "--get-urlmatch",
+                "credential.useHttpPath",
+                subsection,
+            ],
+            machine.neutral,
+            {
+                **machine_environment(machine.environment),
+                "GIT_CEILING_DIRECTORIES": str(machine.neutral.parent),
+            },
+        )
+        if effective.returncode:
+            raise InstallError("Git could not read its credential path setting")
+        if effective.stdout.strip() == b"false":
+            problems.append(
+                f"{entry.origin}: {entry.key}=false hides the GitHub repository path; "
+                "remove this conflicting useHttpPath setting and rerun setup"
+            )
+    return problems
+
+
+def conditional_credential_problems(
+    machine: Machine, entries: Sequence[ConfigEntry]
+) -> list[str]:
+    """Conditional includes that can bypass the gate's credential configuration."""
     problems: list[str] = []
     for entry in entries:
         lowered = entry.key.lower()
@@ -350,6 +395,9 @@ def conditional_helpers(machine: Machine, entries: Sequence[ConfigEntry]) -> lis
         target = include_target(entry, machine.git_home)
         if target is None or not target.is_file():
             continue
+        problems.extend(
+            check_credential_paths(machine, ["--file", str(target), "--includes"])
+        )
         included = read_config(machine, ["--file", str(target), "--includes", "--list"])
         if any(
             (subsection := helper_subsection(item.key)) is not None
@@ -435,7 +483,10 @@ def expected_block(machine: Machine, current: str | None) -> str:
     if current is not None:
         block = read_config(machine, ["--file", "-", "--list"], current.encode())
         entries = without_block(entries, block)
-    problems = conditional_helpers(machine, entries)
+    problems = [
+        *check_credential_paths(machine),
+        *conditional_credential_problems(machine, entries),
+    ]
     if problems:
         raise InstallError("; ".join(problems))
     return render_block(machine.helper_command, human_helpers(entries))
