@@ -366,6 +366,7 @@ def render_block(helper_command: str, helpers: Sequence[str]) -> str:
         BLOCK_BEGIN,
         BLOCK_NOTE.rstrip("\n"),
         f'[credential "{GITHUB}"]',
+        "\tuseHttpPath = true",
         "\thelper =",
         f"\thelper = {quoted(helper_command)}",
         *(f"\thelper = {quoted(helper)}" for helper in helpers),

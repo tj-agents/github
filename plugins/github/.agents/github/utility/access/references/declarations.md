@@ -35,7 +35,11 @@ also need `workflow`. Optional `permissions` declares repository permissions suc
 `{"contents":"write","pull_requests":"write","issues":"write","actions":"read","workflows":"write"}`.
 Fine-grained tokens use this permission map and an empty scope list. The issuer form still requires human
 repository selection and any organization approval. A classic token can reach other resources the account
-can access; the broker's routing restriction does not make the token itself organization-scoped.
+can access. Git, gh and MCP route only to declared targets. Native package authentication is registry-host
+scoped: `owner` binds enrollment and resource probes, npm `scope` selects a registry, and Docker's helper
+serves that registry. Implicit dependencies and base images keep the native client's authentication
+behavior. Resource authorization remains with the issuer and registry; an owner declaration does not
+make a classic PAT organization-scoped.
 
 Each endpoint declares `client`, a plain HTTPS `url`, and, when needed, an authenticated `probe`. Registry
 probes must name an actual resource inside the declared owner, not a public registry landing page.

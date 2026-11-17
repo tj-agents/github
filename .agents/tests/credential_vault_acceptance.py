@@ -19,12 +19,20 @@ def main() -> int:
     )
     vault = GCMVault(credential, dict(os.environ), windows=os.name == "nt")
     version = secrets.token_hex(16)
+    replacement = secrets.token_hex(16)
     try:
         vault.write(version, Secret("nonsecret-native-vault-fixture"))
         if vault.read(version).value != "nonsecret-native-vault-fixture":
             raise AssertionError("native secure-store readback failed")
+        vault.write(replacement, Secret("nonsecret-native-vault-replacement"))
+        if vault.read(version).value != "nonsecret-native-vault-fixture":
+            raise AssertionError("native secure-store versions overwrite each other")
+        vault.erase(version)
+        if vault.read(replacement).value != "nonsecret-native-vault-replacement":
+            raise AssertionError("retiring a version erased its replacement")
     finally:
         vault.erase(version)
+        vault.erase(replacement)
     try:
         vault.read(version)
     except CredentialError as error:
@@ -32,7 +40,15 @@ def main() -> int:
             raise
     else:
         raise AssertionError("native secure-store fixture was not removed")
-    print(json.dumps({"native_vault": "passed", "fixture_removed": True}))
+    print(
+        json.dumps(
+            {
+                "native_vault": "passed",
+                "rotation_isolation": "passed",
+                "fixture_removed": True,
+            }
+        )
+    )
     return 0
 
 

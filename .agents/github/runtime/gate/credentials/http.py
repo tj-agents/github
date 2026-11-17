@@ -46,8 +46,27 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def request(url: str, headers: Mapping[str, str]) -> Response:
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+def proxy_configuration(environment: Mapping[str, str]) -> dict[str, str]:
+    configured = {
+        name.casefold().removesuffix("_proxy"): value
+        for name, value in environment.items()
+        if name.casefold() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}
+    }
+    if "all" in configured:
+        for scheme in ("http", "https"):
+            configured.setdefault(scheme, configured["all"])
+    return configured
+
+
+def request(
+    url: str,
+    headers: Mapping[str, str],
+    *,
+    proxies: Mapping[str, str] | None = None,
+) -> Response:
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler(dict(proxies or {})), NoRedirect()
+    )
     try:
         with opener.open(
             urllib.request.Request(url, headers=dict(headers)), timeout=20

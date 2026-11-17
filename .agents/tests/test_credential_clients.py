@@ -437,11 +437,13 @@ def test_git_declared_routing_stops_helper_fallback_for_undeclared_targets(
     assert NPM_SECRET.value not in response.text + response.message
 
 
-def test_git_declared_routing_refuses_an_unknown_origin(
+@pytest.mark.parametrize("origin", [None, "https://github.com/Example/private.git"])
+def test_git_declared_routing_requires_the_requested_path_even_with_a_known_origin(
     unopened_context: Context,
     sandbox: Sandbox,
+    origin: str | None,
 ) -> None:
-    repository = sandbox.repository("missing-origin", origin=None)
+    repository = sandbox.repository("missing-target", origin=origin)
     context = replace(
         unopened_context, cwd=repository, environment=sandbox.environment()
     )
@@ -451,6 +453,24 @@ def test_git_declared_routing_refuses_an_unknown_origin(
             context,
             NOW,
         )
+
+
+def test_npm_preserves_proxy_connectivity_without_exporting_other_credentials(
+    client_context: Context, child_calls: list[ChildCall]
+) -> None:
+    context = replace(
+        client_context,
+        environment={
+            **client_context.environment,
+            "HTTPS_PROXY": "http://proxy.example.invalid:8080",
+            "NO_PROXY": "localhost,127.0.0.1",
+        },
+    )
+    npm.run(context, context.cwd / "npm", ("install", "@example/sample"), NOW)
+    environment = child_calls[0].environment
+    assert environment["HTTPS_PROXY"] == "http://proxy.example.invalid:8080"
+    assert environment["NO_PROXY"] == "localhost,127.0.0.1"
+    assert "AZURE_DEVOPS_EXT_PAT" not in environment
 
 
 def test_git_declared_routing_requires_ephemeral_authentication_before_vault_access(

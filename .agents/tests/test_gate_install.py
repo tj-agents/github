@@ -78,6 +78,24 @@ def add_human_helper(sandbox: Sandbox) -> None:
     )
 
 
+def test_setup_makes_git_include_each_requested_repository(sandbox: Sandbox) -> None:
+    sandbox.git(
+        sandbox.neutral,
+        "config",
+        "--global",
+        "credential.https://github.com.useHttpPath",
+        "false",
+    )
+    assert main(["setup"]) == 0
+    assert sandbox.git(
+        sandbox.neutral,
+        "config",
+        "--get-urlmatch",
+        "credential.useHttpPath",
+        "https://github.com/Example/other.git",
+    ).strip() == "true"
+
+
 def append_after_block(sandbox: Sandbox) -> None:
     with sandbox.global_config.open("a", encoding="utf-8") as config:
         config.write('[credential "https://github.com"]\n\thelper =\n')

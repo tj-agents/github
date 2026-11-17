@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from gate_git import git, machine_environment
-
 from credentials.context import Context
 from credentials.model import Client, CredentialError
 
@@ -18,22 +16,13 @@ if TYPE_CHECKING:
 def reply(request: CredentialRequest, context: Context, now: datetime) -> str:
     path = request.path
     if not path:
-        origin = git(
-            ["remote", "get-url", "origin"],
-            context.cwd,
-            machine_environment(context.environment),
-        )
-        if origin.returncode:
-            if context.declaration is not None and context.declaration.supports(
-                Client.GIT
-            ):
-                raise CredentialError(
-                    "credential-target-unknown: inspect the declared Git origin"
-                )
-            return ""
-        url = origin.stdout.decode("utf-8", "strict").strip()
-    else:
-        url = f"{request.protocol}://{request.host}/{path}"
+        if context.declaration is not None and context.declaration.supports(Client.GIT):
+            raise CredentialError(
+                "credential-target-unknown: Git omitted the requested repository; "
+                "enable credential.https://github.com.useHttpPath"
+            )
+        return ""
+    url = f"{request.protocol}://{request.host}/{path}"
     current = context.resolve(Client.GIT, url)
     if current is None:
         if context.declaration is not None and context.declaration.supports(Client.GIT):

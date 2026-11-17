@@ -105,6 +105,7 @@ It then appends a marked block to the end of your global Git configuration:
 ```text
 # >>> github@tj-agents access gate (written by setup; do not edit) >>>
 [credential "https://github.com"]
+    useHttpPath = true
 	helper =
 	helper = "!<python> -B ~/.agents-state/github-gate/runtime/github_gate.py credential"
 	helper = "<each github.com helper your configuration already had, in order>"

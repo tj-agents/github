@@ -82,7 +82,6 @@ def private_environment(source: Mapping[str, str]) -> dict[str, str]:
         for key, value in source.items()
         if key.upper() not in excluded
         and not key.upper().startswith(prefixes)
-        and not key.upper().endswith("_PROXY")
     }
 
 
