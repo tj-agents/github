@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from gate_access import CACHE_SECONDS, Declarations, OwnerDefaultError
-from gate_app import AppError, GitHubError
+from gate_app import GitHubError
 from gate_credential import QUIT, CredentialRequest, answer
 from gate_declaration import AppAccess, HumanAccess
 from gate_gh import run
@@ -60,12 +60,13 @@ def test_resolve_prefers_the_repository_then_its_owners_default(
     owner_default: str | None,
     expected: HumanAccess | AppAccess,
 ) -> None:
+    sandbox.enrol_cached()
     if owner_default is not None:
         github.owner_defaults[COVERED] = owner_default
     repository = sandbox.repository("repository", committed)
     assert declarations.resolve(repository, agent(sandbox), NOW) == expected
     reads = github.owner_reads()
-    assert reads == ([] if committed is not None else [(COVERED, None)])
+    assert reads == ([] if committed is not None else [(COVERED, CACHED_TOKEN)])
 
 
 @pytest.mark.parametrize(
@@ -87,6 +88,7 @@ def test_a_repository_without_a_github_origin_is_human_without_a_lookup(
 def test_the_owner_default_is_cached_for_its_time_to_live(
     sandbox: Sandbox, declarations: Declarations, github: FakeGitHub
 ) -> None:
+    sandbox.enrol_cached()
     github.owner_defaults[COVERED] = APP
     repository = sandbox.repository("repository")
     for moment in (NOW, NOW + CACHE_SECONDS - 1):
@@ -102,17 +104,29 @@ def test_the_owner_default_is_cached_for_its_time_to_live(
     assert len(github.owner_reads()) == 3
 
 
-def test_the_owner_default_is_read_as_an_app_installed_on_that_owner(
+def test_only_owners_an_enrolled_app_covers_are_looked_up(
     sandbox: Sandbox, declarations: Declarations, github: FakeGitHub
 ) -> None:
     sandbox.enrol_cached()
     github.owner_defaults[COVERED] = APP
-    github.owner_defaults["other-org"] = HUMAN
+    github.owner_defaults["other-org"] = APP
     covered = sandbox.repository("covered")
     other = sandbox.repository("other", origin="https://github.com/other-org/cris.git")
-    declarations.resolve(covered, agent(sandbox), NOW)
-    declarations.resolve(other, agent(sandbox), NOW)
-    assert github.owner_reads() == [(COVERED, CACHED_TOKEN), ("other-org", None)]
+    assert declarations.resolve(covered, agent(sandbox), NOW) == AppAccess("sample-bot")
+    assert declarations.resolve(other, agent(sandbox), NOW) == HumanAccess()
+    assert github.owner_reads() == [(COVERED, CACHED_TOKEN)]
+
+
+@pytest.mark.parametrize("status", [403, 500])
+def test_an_owner_no_enrolled_app_covers_keeps_its_normal_access_without_a_lookup(
+    sandbox: Sandbox, declarations: Declarations, github: FakeGitHub, status: int
+) -> None:
+    github.owner_failure = GitHubError("GitHub GET failed", status)
+    repository = sandbox.repository(
+        "work", origin="https://github.com/other-org/cris.git"
+    )
+    assert declarations.resolve(repository, agent(sandbox), NOW) == HumanAccess()
+    assert github.calls == []
 
 
 @pytest.mark.parametrize("status", [500, 403, None])
@@ -122,6 +136,7 @@ def test_an_unreadable_owner_default_refuses_agents_and_caches_nothing(
     github: FakeGitHub,
     status: int | None,
 ) -> None:
+    sandbox.enrol_cached()
     github.owner_failure = GitHubError("GitHub GET failed", status)
     repository = sandbox.repository("repository")
     with pytest.raises(OwnerDefaultError, match="cannot read sample-org's default"):
@@ -134,6 +149,7 @@ def test_an_unreadable_owner_default_refuses_agents_and_caches_nothing(
 def test_an_invalid_owner_default_refuses_agents(
     sandbox: Sandbox, declarations: Declarations, github: FakeGitHub
 ) -> None:
+    sandbox.enrol_cached()
     github.owner_defaults[COVERED] = '{"schema_version": 1, "method": "token"}'
     repository = sandbox.repository("repository")
     with pytest.raises(OwnerDefaultError, match=r"sample-org/\.github: .*human or app"):
@@ -161,28 +177,19 @@ def test_the_shim_acts_as_the_app_an_owner_default_names(
     assert scoped["GH_TOKEN"] == CACHED_TOKEN
 
 
-def test_an_owner_default_naming_an_unenrolled_app_fails_closed(
+def test_without_an_enrolled_app_owner_defaults_are_never_read(
     sandbox: Sandbox, real: Path, declarations: Declarations, github: FakeGitHub
 ) -> None:
     github.owner_defaults[COVERED] = APP
     repository = sandbox.repository("repository")
-    platform = RecordingPlatform()
-    with pytest.raises(AppError, match="onboard app --app sample-bot"):
-        run(
-            ["pr", "list"],
-            agent(sandbox),
-            repository,
-            declarations,
-            platform,
-            NOW,
-            unused_handover(),
-        )
-    assert platform.calls == []
+    assert declarations.resolve(repository, agent(sandbox), NOW) == HumanAccess()
+    assert github.owner_reads() == []
 
 
 def test_an_unreadable_owner_default_stops_agents_and_never_humans(
     sandbox: Sandbox, real: Path, declarations: Declarations, github: FakeGitHub
 ) -> None:
+    sandbox.enrol_cached()
     github.owner_failure = GitHubError("GitHub GET failed", 502)
     repository = sandbox.repository("repository")
     platform = RecordingPlatform()
