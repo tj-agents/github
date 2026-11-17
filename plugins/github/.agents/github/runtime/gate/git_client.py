@@ -116,7 +116,10 @@ def github_path_options(
             is not Applies.NEVER
         ):
             keys.add(key)
-    return [option for key in sorted(keys) for option in ("-c", f"{key}=true")]
+    options: list[str] = []
+    for key in sorted(keys):
+        options.extend(("-c", f"{key}=true"))
+    return options
 
 
 def main() -> int:

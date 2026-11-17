@@ -1,12 +1,12 @@
 import json
 import subprocess
-import time
+import sys
 
 import pytest
 from credentials.model import Client, Credential, Endpoint, Provider
 from gate_private import write_private
 from gate_program import real_program
-from gate_sandbox import CURRENT_PLATFORM, Sandbox
+from gate_sandbox import CURRENT_PLATFORM, NOW, Sandbox
 from github_gate import main
 from test_declared_credentials import document
 
@@ -30,15 +30,24 @@ def test_app_agents_enable_paths_without_changing_human_settings(
     )
     assert main(["setup"]) == 0
     sandbox.enrol_cached()
+    client = [str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git"))]
     if owner_default:
         write_private(
             sandbox.gate_home / "owner-defaults/sample-org.json",
-            json.dumps({"fetched": time.time(), "text": json.dumps(app)}).encode(),
+            json.dumps({"fetched": NOW, "text": json.dumps(app)}).encode(),
             CURRENT_PLATFORM,
         )
+        probe = sandbox.gate_home / "runtime/path_probe.py"
+        probe.write_text(
+            "import git_client\n"
+            f"git_client.time.time = lambda: {NOW!r}\n"
+            "raise SystemExit(git_client.main())\n",
+            encoding="utf-8",
+        )
+        client = [sys.executable, "-B", str(probe)]
     result = subprocess.run(
         [
-            str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+            *client,
             "-c",
             "credential.https://github.com.useHttpPath=false",
             "config",
