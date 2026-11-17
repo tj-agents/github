@@ -80,8 +80,7 @@ def private_environment(source: Mapping[str, str]) -> dict[str, str]:
     return {
         key: value
         for key, value in source.items()
-        if key.upper() not in excluded
-        and not key.upper().startswith(prefixes)
+        if key.upper() not in excluded and not key.upper().startswith(prefixes)
     }
 
 

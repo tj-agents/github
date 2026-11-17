@@ -128,10 +128,10 @@ def test_real_dotnet_restore_uses_native_provider_and_keeps_secret_out_of_config
         try:
             (tmp_path / "fixture.csproj").write_text(
                 '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
-                f'<TargetFramework>net{major}.0</TargetFramework>'
-                '<NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup>'
+                f"<TargetFramework>net{major}.0</TargetFramework>"
+                "<NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup>"
                 '<PackageReference Include="Fixture.NativeAuth" Version="1.0.0" />'
-                '</ItemGroup></Project>',
+                "</ItemGroup></Project>",
                 encoding="utf-8",
             )
             config = tmp_path / "nuget.config"

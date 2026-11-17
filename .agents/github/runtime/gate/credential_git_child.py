@@ -30,7 +30,6 @@ def execute(executable: Path, arguments: Sequence[str], source: dict[str, str]) 
         ) from None
 
 
-
 def main() -> int:
     try:
         if len(sys.argv) < 2:

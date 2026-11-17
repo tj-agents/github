@@ -24,8 +24,8 @@ tj-credentials rotate --name work-packages
 A repository selects `github@tj-agents` and commits its nonsecret `.agents/credentials.json` declaration.
 Use [the declaration contract](references/declarations.md) for the provider, account, scopes and actual
 resources each client needs. The broker reads the current commit, then the fetched `origin/HEAD` when a
-branch has no declaration. Linked worktrees share account enrollment; no checkout setup or host activation
-is required. An explicit empty credential list opts that branch out. Uncommitted declarations are ignored.
+branch has no declaration. Linked worktrees share account enrollment; no per-worktree authentication
+setup is required. An explicit empty credential list opts that branch out. Uncommitted declarations are ignored.
 
 Machine setup installs `tj-credentials`, the native NuGet provider and the Git/dotnet/npm/Docker/Azure CLI
 launchers. Declared agent Git requests include their actual repository path; human Git settings and
@@ -46,7 +46,8 @@ Never request the value in chat, arguments, clipboard automation, an environment
 change token types, widen scopes or change organization policy after a refusal.
 
 Tokens are stored through GCM in Windows Credential Manager or an explicitly configured Linux Secret
-Service/GPG store. An unavailable secure backend fails closed. NuGet receives its credential through the
+Service/GPG store. GPG/pass needs an initialized store and `GPG_TTY` set from the current terminal.
+An unavailable secure backend fails closed. NuGet receives its credential through the
 plugin protocol; Docker uses its configured OS helper. npm and Azure CLI receive only their own credential
 in the required child environment. See the declaration contract for their configuration constraints.
 

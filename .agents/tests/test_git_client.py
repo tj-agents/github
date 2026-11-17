@@ -152,3 +152,121 @@ def test_agent_git_uses_the_effective_repository_without_changing_human_settings
         ).strip()
         == "false"
     )
+
+
+def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
+    sandbox: Sandbox,
+) -> None:
+    repository = sandbox.repository("repair", origin="https://github.com/Example/one")
+    declaration = repository / ".agents/credentials.json"
+    declaration.parent.mkdir()
+    declaration.write_text('{"schema_version":1,"credentials":', encoding="utf-8")
+    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "commit", "-qm", "malformed declaration")
+    assert main(["setup"]) == 0
+
+    def run(
+        *arguments: str, request: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+                *arguments,
+            ],
+            cwd=repository,
+            env=sandbox.environment(CODEX_THREAD_ID="fixture"),
+            input=request,
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+
+    refused = run(
+        "credential",
+        "fill",
+        request="protocol=https\nhost=github.com\npath=Example/one\ncapability[]=authtype\n\n",
+    )
+    assert refused.returncode != 0
+    assert "credentials-invalid" in refused.stderr
+    assert "told us to quit" in refused.stderr
+    status = run("status", "--short")
+    assert status.returncode == 0, (status.stdout, status.stderr)
+    credential = Credential(
+        "work",
+        Provider.GITHUB_CLASSIC,
+        "Example",
+        "fixture-user",
+        ("repo",),
+        (Endpoint(Client.GIT, "https://github.com/Example/one"),),
+    )
+    repaired = document(credential)
+    declaration.write_text(repaired, encoding="utf-8")
+    added = run("add", ".agents/credentials.json")
+    assert added.returncode == 0, (added.stdout, added.stderr)
+    committed = run("commit", "-qm", "repair declaration")
+    assert committed.returncode == 0, (committed.stdout, committed.stderr)
+    assert sandbox.git(repository, "show", "HEAD:.agents/credentials.json") == repaired
+    configured = run(
+        "config",
+        "--get-urlmatch",
+        "credential.useHttpPath",
+        "https://github.com/Example/one",
+    )
+    assert configured.returncode == 0, (configured.stdout, configured.stderr)
+    assert configured.stdout.strip() == "true"
+
+
+def test_bare_committed_declaration_enables_paths_only_for_agents(
+    sandbox: Sandbox,
+) -> None:
+    repository = sandbox.repository("seed", origin="https://github.com/Example/one")
+    credential = Credential(
+        "work",
+        Provider.GITHUB_CLASSIC,
+        "Example",
+        "fixture-user",
+        ("repo",),
+        (Endpoint(Client.GIT, "https://github.com/Example/one"),),
+    )
+    declaration = repository / ".agents/credentials.json"
+    declaration.parent.mkdir()
+    declaration.write_text(document(credential), encoding="utf-8")
+    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "commit", "-qm", "declare")
+    bare = sandbox.root / "bare.git"
+    sandbox.git(sandbox.root, "clone", "--bare", str(repository), str(bare))
+    sandbox.git(
+        sandbox.neutral, "config", "--global", "credential.useHttpPath", "false"
+    )
+    assert main(["setup"]) == 0
+    for prefix in (("-C", str(bare)), ("--git-dir=" + str(bare),)):
+        for marker in (None, "CODEX_THREAD_ID"):
+            result = subprocess.run(
+                [
+                    str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+                    *prefix,
+                    "config",
+                    "--get-urlmatch",
+                    "credential.useHttpPath",
+                    "https://github.com/Example/one",
+                ],
+                cwd=sandbox.neutral,
+                env=sandbox.environment(**({marker: "fixture"} if marker else {})),
+                text=True,
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )
+            assert result.returncode == 0, (
+                prefix,
+                marker,
+                result.stdout,
+                result.stderr,
+            )
+            assert result.stdout.strip() == ("true" if marker else "false"), (
+                prefix,
+                marker,
+                result.stdout,
+                result.stderr,
+            )
