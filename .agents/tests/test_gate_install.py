@@ -133,25 +133,45 @@ def add_human_helper(sandbox: Sandbox) -> None:
     )
 
 
-def test_setup_preserves_the_existing_human_path_setting(sandbox: Sandbox) -> None:
-    sandbox.git(
-        sandbox.neutral,
-        "config",
-        "--global",
-        "credential.https://github.com.useHttpPath",
-        "false",
-    )
+@pytest.mark.parametrize(
+    "include",
+    ["", "[include]\n", '[includeIf "gitdir:~/work/"]\n'],
+)
+@pytest.mark.parametrize(
+    "subsection", ["https://github.com/sample-org", "https://user@github.com"]
+)
+def test_setup_and_check_reject_more_specific_settings_that_hide_the_path(
+    sandbox: Sandbox,
+    capsys: pytest.CaptureFixture[str],
+    include: str,
+    subsection: str,
+) -> None:
     assert main(["setup"]) == 0
-    assert (
-        sandbox.git(
-            sandbox.neutral,
-            "config",
-            "--get-urlmatch",
-            "credential.useHttpPath",
-            "https://github.com/Example/other.git",
-        ).strip()
-        == "false"
+    setting = f'[credential "{subsection}"]\n\tuseHttpPath = off\n'
+    (sandbox.home / "path.gitconfig").write_text(setting, encoding="utf-8")
+    prefix = include + "\tpath = path.gitconfig\n" if include else setting
+    original = prefix + sandbox.global_config.read_text(encoding="utf-8")
+    sandbox.global_config.write_text(original, encoding="utf-8")
+    capsys.readouterr()
+    assert main(["setup", "--check"]) == 1
+    assert "hides the GitHub repository path" in capsys.readouterr().err
+    assert main(["setup"]) == 1
+    assert "hides the GitHub repository path" in capsys.readouterr().err
+    assert sandbox.global_config.read_text(encoding="utf-8") == original
+
+
+def test_setup_allows_path_settings_that_do_not_hide_github_paths(
+    sandbox: Sandbox,
+) -> None:
+    original = (
+        '[credential "https://github.com/sample-org"]\n\tuseHttpPath = off\n'
+        '[credential "https://github.com/sample-org"]\n\tuseHttpPath = yes\n'
+        '[credential "https://dev.azure.com/sample-org"]\n\tuseHttpPath = off\n'
     )
+    sandbox.global_config.write_text(original, encoding="utf-8")
+    assert main(["setup"]) == 0
+    assert main(["setup", "--check"]) == 0
+    assert sandbox.global_config.read_text(encoding="utf-8").startswith(original)
 
 
 def append_after_block(sandbox: Sandbox) -> None:
