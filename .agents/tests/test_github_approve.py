@@ -179,10 +179,10 @@ class FakeTools:
         if command[0] == "agent-store":
             return self.store(command)
         if command[0] == "tj":
-            assert list(command[1:5]) == ["item", "--profile", "github", "prs"]
+            assert list(command[1:3]) == ["item", "prs"]
             pulls = [
                 {"url": address, "state": state}
-                for address, state in self.item_prs.get(command[5], [])
+                for address, state in self.item_prs.get(command[3], [])
             ]
             return completed(command, json.dumps({"prs": pulls}))
         return self.gh(command)
@@ -269,6 +269,29 @@ def test_eligible_prs_are_listed_approved_and_auto_merged() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        "azure-devops:dev.azure.com/sample-org:10",
+        "jira:example.atlassian.net:DEMO-10",
+    ],
+)
+def test_non_github_items_discover_prs_without_overriding_the_tracker(
+    item: str,
+) -> None:
+    tools = tools_with_work()
+    record = session("claude:me")
+    record["links"] = [{"item": {"ref": item}, "role": "owner"}]
+    tools.sessions = {"claude:me": record}
+    tools.item_prs = {item: [(FIRST, "open")]}
+
+    code, _ = run_approval(tools)
+
+    assert code == 0
+    assert tools.commands("tj") == [["tj", "item", "prs", item]]
+    assert tools.approvals() == [FIRST]
+
+
 def test_every_tool_runs_without_agent_markers_tokens_or_git_overrides() -> None:
     tools = tools_with_work()
     run_approval(tools)
@@ -285,7 +308,7 @@ def test_each_item_pr_and_declaration_is_read_once() -> None:
     tools = tools_with_work()
     tools.sessions["claude:me"] = session("claude:me", 10, 11, 10)
     run_approval(tools)
-    assert [command[5] for command in tools.commands("tj")] == [
+    assert [command[3] for command in tools.commands("tj")] == [
         ref(10)["ref"],
         ref(11)["ref"],
     ]
@@ -389,7 +412,7 @@ def test_a_launch_id_resolves_the_launch_item_and_its_bound_session() -> None:
     assert tools.commands("agent-store", "show") == [
         ["agent-store", "show", "--launch-id", "L1"]
     ]
-    assert [command[5] for command in tools.commands("tj")] == [
+    assert [command[3] for command in tools.commands("tj")] == [
         ref(11)["ref"],
         ref(10)["ref"],
     ]
@@ -413,7 +436,7 @@ def test_an_explicit_session_overrides_inherited_ones() -> None:
         "claude:me": session("claude:me", 11),
     }
     run_approval(tools, {**AGENT, "TJ_RUN_LAUNCH_ID": "unrelated"}, "codex:chosen")
-    assert [command[5] for command in tools.commands("tj")] == [ref(10)["ref"]]
+    assert [command[3] for command in tools.commands("tj")] == [ref(10)["ref"]]
     assert tools.approvals() == [FIRST]
 
 
@@ -439,7 +462,7 @@ def test_children_are_collected_through_launches_and_session_parents() -> None:
         launch("L4", parent="claude:other", item=13),
     ]
     run_approval(tools)
-    assert [command[5] for command in tools.commands("tj")] == [
+    assert [command[3] for command in tools.commands("tj")] == [
         ref(10)["ref"],
         ref(11)["ref"],
     ]
