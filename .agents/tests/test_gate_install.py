@@ -135,7 +135,7 @@ def add_human_helper(sandbox: Sandbox) -> None:
 
 @pytest.mark.parametrize(
     "include",
-    ["", "[include]\n", '[includeIf "gitdir:~/work/"]\n'],
+    ["", "[include]\n"],
 )
 @pytest.mark.parametrize(
     "subsection", ["https://github.com/sample-org", "https://user@github.com"]

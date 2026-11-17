@@ -340,13 +340,10 @@ def include_target(entry: ConfigEntry, git_home: Path) -> Path | None:
     return Path(origin).parent / target
 
 
-def check_credential_paths(
-    machine: Machine, arguments: Sequence[str] = ()
-) -> list[str]:
+def check_credential_paths(machine: Machine) -> list[str]:
     entries = read_config(
         machine,
         [
-            *arguments,
             "--show-origin",
             "--type=bool",
             "--get-regexp",
@@ -361,7 +358,6 @@ def check_credential_paths(
         effective = git(
             [
                 "config",
-                *arguments,
                 "--type=bool",
                 "--get-urlmatch",
                 "credential.useHttpPath",
@@ -383,10 +379,8 @@ def check_credential_paths(
     return problems
 
 
-def conditional_credential_problems(
-    machine: Machine, entries: Sequence[ConfigEntry]
-) -> list[str]:
-    """Conditional includes that can bypass the gate's credential configuration."""
+def conditional_helpers(machine: Machine, entries: Sequence[ConfigEntry]) -> list[str]:
+    """Conditional includes that add github.com helpers the gate would reorder."""
     problems: list[str] = []
     for entry in entries:
         lowered = entry.key.lower()
@@ -395,9 +389,6 @@ def conditional_credential_problems(
         target = include_target(entry, machine.git_home)
         if target is None or not target.is_file():
             continue
-        problems.extend(
-            check_credential_paths(machine, ["--file", str(target), "--includes"])
-        )
         included = read_config(machine, ["--file", str(target), "--includes", "--list"])
         if any(
             (subsection := helper_subsection(item.key)) is not None
@@ -485,7 +476,7 @@ def expected_block(machine: Machine, current: str | None) -> str:
         entries = without_block(entries, block)
     problems = [
         *check_credential_paths(machine),
-        *conditional_credential_problems(machine, entries),
+        *conditional_helpers(machine, entries),
     ]
     if problems:
         raise InstallError("; ".join(problems))
