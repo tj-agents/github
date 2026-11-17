@@ -2,6 +2,7 @@ import subprocess
 
 import pytest
 from credentials.model import Client, Credential, Endpoint, Provider
+from gate_program import real_program
 from gate_sandbox import CURRENT_PLATFORM, Sandbox
 from github_gate import main
 from test_declared_credentials import document
@@ -166,13 +167,15 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
     assert main(["setup"]) == 0
 
     def run(
-        *arguments: str, request: str | None = None
+        *arguments: str, request: str | None = None, native: bool = False
     ) -> subprocess.CompletedProcess[str]:
+        executable = (
+            real_program("git", sandbox.environment())
+            if native
+            else sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")
+        )
         return subprocess.run(
-            [
-                str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
-                *arguments,
-            ],
+            [str(executable), *arguments],
             cwd=repository,
             env=sandbox.environment(CODEX_THREAD_ID="fixture"),
             input=request,
@@ -186,6 +189,7 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
         "credential",
         "fill",
         request="protocol=https\nhost=github.com\npath=Example/one\ncapability[]=authtype\n\n",
+        native=True,
     )
     assert refused.returncode != 0
     assert "credentials-invalid" in refused.stderr
@@ -202,6 +206,9 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
     )
     repaired = document(credential)
     declaration.write_text(repaired, encoding="utf-8")
+    difference = run("diff", "--", ".agents/credentials.json")
+    assert difference.returncode == 0, (difference.stdout, difference.stderr)
+    assert difference.stdout
     added = run("add", ".agents/credentials.json")
     assert added.returncode == 0, (added.stdout, added.stderr)
     committed = run("commit", "-qm", "repair declaration")
@@ -215,6 +222,39 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
     )
     assert configured.returncode == 0, (configured.stdout, configured.stderr)
     assert configured.stdout.strip() == "true"
+
+
+def test_malformed_committed_declaration_blocks_remote_commands(
+    sandbox: Sandbox,
+) -> None:
+    repository = sandbox.repository("malformed")
+    declaration = repository / ".agents/credentials.json"
+    declaration.parent.mkdir()
+    declaration.write_text('{"schema_version":1,"credentials":', encoding="utf-8")
+    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "commit", "-qm", "malformed declaration")
+    remote = sandbox.root / "remote.git"
+    sandbox.git(sandbox.root, "clone", "--bare", str(repository), str(remote))
+    assert "refs/heads/main" in sandbox.git(repository, "ls-remote", str(remote))
+    assert main(["setup"]) == 0
+    result = subprocess.run(
+        [
+            str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+            "-c",
+            "credential.helper=",
+            "ls-remote",
+            str(remote),
+        ],
+        cwd=repository,
+        env=sandbox.environment(CODEX_THREAD_ID="fixture"),
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode != 0, (result.stdout, result.stderr)
+    assert "credentials-invalid" in result.stderr
+    assert "refs/heads/main" not in result.stdout
 
 
 def test_bare_committed_declaration_enables_paths_only_for_agents(

@@ -10,6 +10,10 @@ from gate_agent import agent_host
 from gate_error import GateError
 from gate_program import execute, real_program
 
+# Only these local commands may repair an invalid committed declaration.
+# Every other command stays blocked until that declaration is valid.
+REPAIR_COMMANDS = frozenset({"status", "diff", "add", "commit"})
+
 
 def split_global_options(arguments: Sequence[str]) -> tuple[list[str], list[str]]:
     prefix: list[str] = []
@@ -92,7 +96,9 @@ def main() -> int:
         try:
             context = Context.load(target, environment, state, windows=os.name == "nt")
         except CredentialError:
-            return execute(executable, arguments, cwd, environment)
+            if command and command[0] in REPAIR_COMMANDS:
+                return execute(executable, arguments, cwd, environment)
+            raise
         if context.declaration is not None and context.declaration.supports(Client.GIT):
             arguments = [
                 "-c",
