@@ -54,15 +54,16 @@ tj-agents/notes     (no file)                     agents act as sample-bot
 tj-agents/sandbox   {"method": "human", ...}      agents use the human's login
 ```
 
-The gate reads an owner's default from GitHub with the installation token of an App this
-machine has enrolled and installed on that owner. Otherwise it reads without credentials, so a
-private `.github` repository is visible only through such an App. It never uses the human's
-credentials. A 404 means the owner has no default. The result is cached in the gate's state
+The gate reads an owner's default only when an App this machine has enrolled is installed on
+that owner, using that App's installation token. Any other owner, such as an employer's, is
+never looked up and keeps its normal access, so a machine that has not enrolled an App also
+treats owner defaults as `human`. It never uses the human's credentials. A 404 means the owner
+has no default. The result is cached in the gate's state
 directory for 10 minutes; edits take effect after that. If the default cannot be read, agents
 in that owner's repositories stop with the reason until it can.
 
 The fields must match exactly. Any other method or field makes a declaration invalid. An invalid
-repository file or owner default stops agents there, and an `app` default naming an App this
+repository file or owner default stops agents there, and a repository file naming an App this
 machine has not enrolled stops them with the onboarding command. Humans are never affected and
 never cause an owner lookup.
 
