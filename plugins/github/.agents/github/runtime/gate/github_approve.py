@@ -200,7 +200,7 @@ def pending(approval: Approval, items: Sequence[str], reviewer: str) -> list[Wai
     urls: list[str] = []
     for item in dict.fromkeys(items):
         found = approval.json(
-            [approval.tj, "item", "--profile", "github", "prs", item],
+            [approval.tj, "item", "prs", item],
             ITEM_TIMEOUT_SECONDS,
         )
         assert isinstance(found, dict)

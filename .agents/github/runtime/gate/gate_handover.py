@@ -172,7 +172,7 @@ def link(url: str, inherited: Mapping[str, str], handover: Handover) -> str:
     )
     remedy = (
         f"link this session with `agent-store link --session {label} --item <ref>` and "
-        f"the pull request with `tj item --profile github link <ref> {url}`, then run "
+        f"the pull request with `tj item link <ref> {url}`, then run "
         f"`{APPROVE_LINE}`"
     )
     if handover.agent_store is None or handover.tj is None:
@@ -197,7 +197,7 @@ def link(url: str, inherited: Mapping[str, str], handover: Handover) -> str:
             f"was not linked; {remedy}"
         )
     linked = handover.run(
-        [handover.tj, "item", "--profile", "github", "link", items[0], url],
+        [handover.tj, "item", "link", items[0], url],
         inherited,
         ITEM_TIMEOUT_SECONDS,
     )
