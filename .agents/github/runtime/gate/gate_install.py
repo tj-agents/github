@@ -372,6 +372,7 @@ def render_block(helper_command: str, helpers: Sequence[str]) -> str:
         BLOCK_BEGIN,
         BLOCK_NOTE.rstrip("\n"),
         f'[credential "{GITHUB}"]',
+        "\tuseHttpPath = true",
         "\thelper =",
         f"\thelper = {quoted(helper_command)}",
         *(f"\thelper = {quoted(helper)}" for helper in helpers),
@@ -457,7 +458,7 @@ def check_git_config(machine: Machine) -> list[str]:
     if text.block != expected:
         problems.append(
             f"{path}: the gate's block is stale; the github.com helpers it re-adds or "
-            "the gate command changed"
+            "the gate command or useHttpPath setting changed"
         )
     return problems
 
