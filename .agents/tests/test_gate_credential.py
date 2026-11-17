@@ -104,7 +104,7 @@ def test_an_agent_in_an_app_repository_gets_only_the_app_credential(
 
 
 @pytest.mark.parametrize("earlier_setting", ["", "\tuseHttpPath = false\n"])
-def test_setup_keeps_the_requested_owner_when_it_differs_from_origin(
+def test_agent_launcher_keeps_the_requested_owner_when_it_differs_from_origin(
     sandbox: Sandbox, monkeypatch: pytest.MonkeyPatch, earlier_setting: str
 ) -> None:
     sandbox.global_config.write_text(

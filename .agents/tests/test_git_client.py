@@ -1,11 +1,93 @@
+import json
 import subprocess
+import time
 
 import pytest
 from credentials.model import Client, Credential, Endpoint, Provider
+from gate_private import write_private
 from gate_program import real_program
 from gate_sandbox import CURRENT_PLATFORM, Sandbox
 from github_gate import main
 from test_declared_credentials import document
+
+
+@pytest.mark.parametrize("owner_default", [False, True])
+@pytest.mark.parametrize("marker", [None, "CODEX_THREAD_ID", "CLAUDECODE"])
+def test_app_agents_enable_paths_without_changing_human_settings(
+    sandbox: Sandbox, owner_default: bool, marker: str | None
+) -> None:
+    app = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+    repository = sandbox.repository("app", None if owner_default else app)
+    sandbox.git(
+        sandbox.neutral, "config", "--global", "credential.useHttpPath", "false"
+    )
+    sandbox.git(
+        sandbox.neutral,
+        "config",
+        "--global",
+        "credential.https://github.com/other-org.useHttpPath",
+        "false",
+    )
+    assert main(["setup"]) == 0
+    sandbox.enrol_cached()
+    if owner_default:
+        write_private(
+            sandbox.gate_home / "owner-defaults/sample-org.json",
+            json.dumps({"fetched": time.time(), "text": json.dumps(app)}).encode(),
+            CURRENT_PLATFORM,
+        )
+    result = subprocess.run(
+        [
+            str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+            "-c",
+            "credential.https://github.com.useHttpPath=false",
+            "config",
+            "--get-urlmatch",
+            "credential.useHttpPath",
+            "https://github.com/other-org/repository.git",
+        ],
+        cwd=repository,
+        env=sandbox.environment(**({marker: "fixture"} if marker else {})),
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=True,
+    )
+    assert result.stdout.strip() == ("true" if marker else "false")
+    assert (
+        sandbox.git(
+            repository, "config", "--global", "--get", "credential.useHttpPath"
+        ).strip()
+        == "false"
+    )
+
+
+def test_app_paths_from_an_explicit_bare_git_directory(sandbox: Sandbox) -> None:
+    app = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+    source = sandbox.repository("seed", app)
+    bare = sandbox.root / "arbitrary-directory"
+    sandbox.git(sandbox.root, "clone", "--bare", str(source), str(bare))
+    sandbox.git(
+        sandbox.neutral, "config", "--global", "credential.useHttpPath", "false"
+    )
+    assert main(["setup"]) == 0
+    result = subprocess.run(
+        [
+            str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+            "--git-dir=" + str(bare),
+            "config",
+            "--get-urlmatch",
+            "credential.useHttpPath",
+            "https://github.com/other-org/repository.git",
+        ],
+        cwd=sandbox.neutral,
+        env=sandbox.environment(CODEX_THREAD_ID="fixture"),
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=True,
+    )
+    assert result.stdout.strip() == "true"
 
 
 def test_invalid_declaration_repair_does_not_lazily_fetch_missing_blobs(

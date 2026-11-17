@@ -119,6 +119,14 @@ reports changes to your github.com helpers and an App the current repository's c
 names that this machine has not enrolled. It does not read owner defaults, so it works offline;
 agents meet an unenrolled owner-default App with the onboarding command instead.
 
+The installed `git` launcher enables GitHub repository paths for each agent command that uses
+App access or a declared Git credential. App access includes both a committed repository declaration
+and an owner's default. It resolves the effective repository after Git's global options, such as
+`-C`, and keeps the target repository's path when fetching under another account. Human commands
+and agents using ordinary human access keep their existing credential settings; setup does not
+enable `credential.useHttpPath` globally. More-specific GitHub URL settings are overridden only
+for that agent command, so they cannot remove the path before it reaches the helper.
+
 ### Onboarding an App
 
 The App's private key is the only secret. Enrol it once per machine, as the human:
@@ -191,9 +199,9 @@ are host permission rules, not an OS boundary around your account.
 - Agents acting as an App over Git need Git 2.46 or newer. The gate answers with a one-off
   `Authorization` value, so Git's later `store` and `erase` give your helpers no password to
   save. Older Git is told to quit.
-- Unless `credential.useHttpPath` is set, Git does not tell helpers which repository it is
-  fetching, so the gate uses the `origin` owner. A remote under another account then fails
-  rather than using your credentials.
+- Keep the installed `git` launcher before native Git on `PATH`. Directly invoking native Git
+  skips the launcher's App and declared-credential path handling; without `credential.useHttpPath`,
+  the helper uses the `origin` owner and a remote under another account can fail.
 - Git Credential Manager prints `Missing 'password' input argument` when Git asks it to store
   the App's credential. The message is harmless; nothing is stored.
 - Setup refuses github.com helpers it cannot reproduce after its own: helpers scoped to a path or
