@@ -103,6 +103,30 @@ def test_an_agent_in_an_app_repository_gets_only_the_app_credential(
     assert machine.operations() == []
 
 
+@pytest.mark.parametrize("earlier_setting", ["", "\tuseHttpPath = false\n"])
+def test_setup_keeps_the_requested_owner_when_it_differs_from_origin(
+    sandbox: Sandbox, monkeypatch: pytest.MonkeyPatch, earlier_setting: str
+) -> None:
+    sandbox.global_config.write_text(
+        '[credential "https://github.com"]\n' + earlier_setting, encoding="utf-8"
+    )
+    installed = Machine(sandbox, monkeypatch)
+    sandbox.git(
+        installed.declared,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/other-org/core.git",
+    )
+    monkeypatch.setenv("CODEX_THREAD_ID", "session")
+    result = fill(installed.declared, TRANSPORT + "path=sample-org/agents.git\n")
+    assert result.returncode == 0, result.stderr
+    assert "path=sample-org/agents.git" in result.stdout
+    assert f"credential={BOT}" in result.stdout
+    assert "password=" not in result.stdout
+    assert installed.operations() == []
+
+
 def test_linked_worktrees_read_their_own_committed_declaration(
     machine: Machine, monkeypatch: pytest.MonkeyPatch
 ) -> None:

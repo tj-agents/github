@@ -69,6 +69,61 @@ def test_setup_installs_each_piece_once_and_check_passes(
     assert capsys.readouterr().out == "github-gate: ready\n"
 
 
+@pytest.mark.parametrize(
+    "original", ["", HUMAN_CONFIG.replace("useHttpPath = true", "useHttpPath = false")]
+)
+def test_setup_enables_github_credential_paths_without_rewriting_user_config(
+    sandbox: Sandbox, original: str
+) -> None:
+    sandbox.global_config.write_text(original, encoding="utf-8")
+    assert main(["setup"]) == 0
+    content = sandbox.global_config.read_text(encoding="utf-8")
+    assert content.startswith(original)
+    assert (
+        sandbox.git(
+            sandbox.neutral,
+            "config",
+            "--bool",
+            "--get-urlmatch",
+            "credential.useHttpPath",
+            "https://github.com/sample-org/repository.git",
+        ).strip()
+        == "true"
+    )
+    if original:
+        assert block(sandbox)[2:] == [GH_HELPER, 'helper = "store"']
+        assert (
+            sandbox.git(
+                sandbox.neutral,
+                "config",
+                "--get-urlmatch",
+                "credential.helper",
+                "https://dev.azure.com/example",
+            ).strip()
+            == "azure-only"
+        )
+    assert main(["setup"]) == 0
+    assert sandbox.global_config.read_text(encoding="utf-8") == content
+    assert main(["setup", "--check"]) == 0
+
+
+@pytest.mark.parametrize("replacement", ["", "\tuseHttpPath = false\n"])
+def test_check_reports_credential_path_drift_and_setup_repairs_it(
+    sandbox: Sandbox, capsys: pytest.CaptureFixture[str], replacement: str
+) -> None:
+    assert main(["setup"]) == 0
+    content = sandbox.global_config.read_text(encoding="utf-8")
+    drifted = content.replace("\tuseHttpPath = true\n", replacement)
+    sandbox.global_config.write_text(drifted, encoding="utf-8")
+    capsys.readouterr()
+    assert main(["setup", "--check"]) == 1
+    assert "useHttpPath" in capsys.readouterr().err
+    assert sandbox.global_config.read_text(encoding="utf-8") == drifted
+    assert main(["setup"]) == 0
+    assert sandbox.global_config.read_text(encoding="utf-8") == content
+    assert main(["setup", "--check"]) == 0
+
+
 def add_human_helper(sandbox: Sandbox) -> None:
     content = sandbox.global_config.read_text(encoding="utf-8")
     start = content.index(BLOCK_BEGIN)
