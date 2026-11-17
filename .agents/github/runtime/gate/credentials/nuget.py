@@ -57,8 +57,7 @@ def authentication(
             "Message": "No declared credential for this source",
             "AuthenticationTypes": [],
         }
-    service.check(now)
-    secret = service.secret(now)
+    secret = service.authorize(now)
     return {
         "ResponseCode": "Success",
         "Username": service.credential.login,

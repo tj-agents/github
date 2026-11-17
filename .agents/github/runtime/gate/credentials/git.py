@@ -34,8 +34,7 @@ def reply(request: CredentialRequest, context: Context, now: datetime) -> str:
         raise CredentialError(
             "credential-client-unsupported: Git 2.46 or newer is required"
         )
-    current.check(now)
-    secret = current.secret(now)
+    secret = current.authorize(now)
     encoded = base64.b64encode(
         f"{current.credential.login}:{secret.value}".encode()
     ).decode()

@@ -52,10 +52,13 @@ def proxy_configuration(environment: Mapping[str, str]) -> dict[str, str]:
         for name, value in environment.items()
         if name.casefold() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}
     }
+    for name, value in environment.items():
+        if name in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}:
+            configured[name.removesuffix("_proxy")] = value
     if "all" in configured:
         for scheme in ("http", "https"):
             configured.setdefault(scheme, configured["all"])
-    return configured
+    return {name: value for name, value in configured.items() if value}
 
 
 def request(

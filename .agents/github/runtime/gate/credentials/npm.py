@@ -41,9 +41,9 @@ def run(
         if not endpoints:
             continue
         current = context.service(credential)
-        current.check(now)
+        secret = current.authorize(now)
         variable = "TJ_CREDENTIAL_" + credential.key.upper()
-        environment[variable] = current.secret(now).value
+        environment[variable] = secret.value
         for endpoint in endpoints:
             host = urllib.parse.urlsplit(endpoint.url).netloc
             if host in hosts:
