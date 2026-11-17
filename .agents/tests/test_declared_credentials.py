@@ -6,7 +6,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from credentials import github_classic, github_fine_grained, nuget, providers
+from credentials import (
+    context,
+    github_classic,
+    github_fine_grained,
+    http,
+    nuget,
+    providers,
+)
 from credentials.http import Response, Transport
 from credentials.model import (
     Client,
@@ -23,6 +30,40 @@ from gate_sandbox import Sandbox
 
 NOW = datetime(2026, 11, 17, 12, tzinfo=UTC)
 TOKEN = Secret("ghp_" + "0" * 36)
+
+
+def test_preflight_keeps_the_explicit_proxy_configuration(
+    credential: Credential, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed: list[dict[str, str]] = []
+
+    def transport(
+        url: str,
+        headers: Mapping[str, str],
+        *,
+        proxies: Mapping[str, str] | None = None,
+    ) -> Response:
+        observed.append(dict(proxies or {}))
+        return Response(200, {}, b"{}")
+
+    def vault(
+        credential: Credential, environment: Mapping[str, str], *, windows: bool
+    ) -> MemoryVault:
+        return MemoryVault()
+
+    monkeypatch.setattr(context, "GCMVault", vault)
+    monkeypatch.setattr(http, "request", transport)
+    current = context.Context(
+        tmp_path,
+        {"HTTPS_PROXY": "http://proxy.example.invalid:8080", "NO_PROXY": "localhost"},
+        tmp_path,
+        False,
+        None,
+    )
+    current.service(credential).transport("https://api.github.com/user", {})
+    assert observed == [
+        {"https": "http://proxy.example.invalid:8080", "no": "localhost"}
+    ]
 
 
 @pytest.fixture

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from credentials import http, model, providers
@@ -46,7 +47,7 @@ class Context:
             State(self.state_root, credential),
             GCMVault(credential, self.environment, windows=self.windows),
             providers.PROVIDERS[credential.provider],
-            http.request,
+            partial(http.request, proxies=http.proxy_configuration(self.environment)),
         )
 
     def named(self, name: str) -> Service:
