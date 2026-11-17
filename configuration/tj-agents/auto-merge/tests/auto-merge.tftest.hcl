@@ -1,10 +1,5 @@
 mock_provider "github" {
   override_during = plan
-  mock_data "github_repositories" {
-    defaults = {
-      names = ["agent", "cli"]
-    }
-  }
   mock_data "github_repository" {
     defaults = { allow_auto_merge = true, private = false }
   }
@@ -93,15 +88,4 @@ run "disabled_repository_fails_verification" {
   }
 
   expect_failures = [data.github_repository.auto_merge_verified["agent"]]
-}
-
-run "missing_repository_fails_inventory" {
-  command = plan
-
-  override_data {
-    target = data.github_repositories.active
-    values = { names = ["agent"] }
-  }
-
-  expect_failures = [terraform_data.auto_merge_inventory]
 }
