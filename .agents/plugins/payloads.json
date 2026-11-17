@@ -7,6 +7,11 @@
   "resources": [
     {
       "plugin": "github",
+      "source": ".agents/github/resources/credentials-mcp.json",
+      "destination": ".mcp.json"
+    },
+    {
+      "plugin": "github",
       "source": ".agents/github/runtime",
       "destination": ".agents/github/runtime"
     },
