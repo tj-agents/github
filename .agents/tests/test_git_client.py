@@ -8,6 +8,58 @@ from github_gate import main
 from test_declared_credentials import document
 
 
+def test_invalid_declaration_repair_does_not_lazily_fetch_missing_blobs(
+    sandbox: Sandbox,
+) -> None:
+    seed = sandbox.repository("seed")
+    declaration = seed / ".agents/credentials.json"
+    declaration.parent.mkdir()
+    declaration.write_text("{invalid", encoding="utf-8")
+    history = seed / "history.txt"
+    history.write_text("old content\n", encoding="utf-8")
+    sandbox.git(seed, "add", ".")
+    sandbox.git(seed, "commit", "-qm", "old content and invalid declaration")
+    old_blob = sandbox.git(seed, "rev-parse", "HEAD:history.txt").strip()
+    history.write_text("new content\n", encoding="utf-8")
+    sandbox.git(seed, "commit", "-qam", "new content")
+    remote = sandbox.root / "remote.git"
+    sandbox.git(sandbox.root, "clone", "--bare", str(seed), str(remote))
+    sandbox.git(remote, "config", "uploadpack.allowFilter", "true")
+    partial = sandbox.root / "partial"
+    sandbox.git(
+        sandbox.root,
+        "clone",
+        "--filter=blob:none",
+        "--no-checkout",
+        remote.as_uri(),
+        str(partial),
+    )
+    sandbox.git(partial, "checkout", "--force", "main")
+    assert "?" + old_blob in sandbox.git(
+        partial, "rev-list", "--objects", "--missing=print", "HEAD"
+    )
+    assert main(["setup"]) == 0
+    refused = subprocess.run(
+        [
+            str(sandbox.bin / CURRENT_PLATFORM.command_launcher_name("git")),
+            "diff",
+            "HEAD~1",
+            "HEAD",
+        ],
+        cwd=partial,
+        env=sandbox.environment(CODEX_THREAD_ID="fixture"),
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert refused.returncode != 0, (refused.stdout, refused.stderr)
+    assert "?" + old_blob in sandbox.git(
+        partial, "rev-list", "--objects", "--missing=print", "HEAD"
+    )
+    assert "old content" in sandbox.git(partial, "diff", "HEAD~1", "HEAD")
+
+
 @pytest.mark.parametrize("marker", [None, "CODEX_THREAD_ID", "CLAUDECODE"])
 def test_only_declared_agents_enable_repository_paths(
     sandbox: Sandbox, marker: str | None

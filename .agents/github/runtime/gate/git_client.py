@@ -97,7 +97,12 @@ def main() -> int:
             context = Context.load(target, environment, state, windows=os.name == "nt")
         except CredentialError:
             if command and command[0] in REPAIR_COMMANDS:
-                return execute(executable, arguments, cwd, environment)
+                return execute(
+                    executable,
+                    arguments,
+                    cwd,
+                    {**environment, "GIT_NO_LAZY_FETCH": "1"},
+                )
             raise
         if context.declaration is not None and context.declaration.supports(Client.GIT):
             arguments = [
