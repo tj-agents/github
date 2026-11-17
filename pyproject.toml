@@ -2,13 +2,16 @@
 name = "github"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["tj-cli"]
 
 [dependency-groups]
 dev = ["mypy>=2.4.1", "playwright==1.64.1", "pytest>=9.1.1", "ruff>=0.17.4", "pytest-socket>=0.7.0"]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+tj-cli = { git = "https://github.com/tj-agents/cli.git", rev = "9608c76960c1b0aba7d0f1a05ae335679ffbbf47", subdirectory = "packages/tj-cli" }
 
 [tool.ruff]
 include = [".agents/**/*.py"]
@@ -36,10 +39,11 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "A", "BLE", "C4", "SIM", "PTH", "P
 ".agents/github/utility/access/scripts/access_core.py" = ["ANN401", "PLR6301"]
 ".agents/github/utility/collaboration/scripts/github_collaboration.py" = ["ANN401", "UP036"]
 ".agents/github/utility/access/scripts/github_access.py" = ["UP036"]
+".agents/github/runtime/gate/github_gate.py" = ["UP036"]
 
 [tool.mypy]
 enable_error_code = ["ignore-without-code", "exhaustive-match"]
-mypy_path = [".agents/github/utility/collaboration/scripts", ".agents/github/utility/access/scripts", ".agents/github/utility/configuration/scripts"]
+mypy_path = [".agents/github/utility/collaboration/scripts", ".agents/github/utility/access/scripts", ".agents/github/utility/configuration/scripts", ".agents/github/runtime/gate"]
 strict = true
 warn_unreachable = true
 files = [".agents"]
