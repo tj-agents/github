@@ -1,15 +1,15 @@
 ---
 name: access
-description: Bind an employer checkout to organization-scoped Git/gh access, securely onboard or rotate a fine-grained or explicitly authorized classic credential, and check authentication. Use when configuring or diagnosing employer GitHub access.
+description: Enroll, rotate and diagnose repository-declared GitHub and Azure DevOps credentials, including Git, gh, MCP and private package feeds. Use when a declared credential is missing, expiring or refused, or when adopting credential tooling.
 kind: utility
 domain: github
 profile: core
-applicability: explicitly selected employer GitHub access
-requires: python, git, Git Credential Manager, secure credential backend
+applicability: explicitly declared repository credentials
+requires: Python 3.12+, Git Credential Manager with an OS-backed store; native client requirements follow the declared endpoints
 provenance: house
 ---
 
-# Employer GitHub access
+# Declared credentials
 
 Read and follow the [canonical definition](../../../.agents/github/utility/access/SKILL.md) in full.
 This discovery entry is generated; edit the referenced `.agents/` definition.

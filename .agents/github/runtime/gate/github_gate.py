@@ -215,6 +215,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 platform,
                 now,
                 handover,
+                input_stream=sys.stdin,
             )
         return command(
             parser().parse_args(arguments), environment, platform, script, now

@@ -59,9 +59,9 @@ def test_setup_installs_each_piece_once_and_check_passes(
     assert "github_gate.py' credential" in gate or "github_gate.py credential" in gate
     assert human_helpers == [GH_HELPER, 'helper = "store"']
     runtime = human.gate_home / "runtime"
-    assert sorted(path.name for path in runtime.iterdir()) == sorted(
-        path.name for path in GATE_SOURCE.iterdir() if path.suffix == ".py"
-    )
+    assert (runtime / "github_gate.py").is_file()
+    assert (runtime / "tj_credentials.py").is_file()
+    assert (runtime / "credentials/mcp_schemas.json").is_file()
     assert main(["setup"]) == 0
     assert capsys.readouterr().out == "github-gate: already set up\n"
     assert human.global_config.read_text(encoding="utf-8") == content
@@ -75,6 +75,27 @@ def add_human_helper(sandbox: Sandbox) -> None:
     added = '[credential "https://github.com"]\n\thelper = manager\n'
     sandbox.global_config.write_text(
         content[:start] + added + content[start:], encoding="utf-8"
+    )
+
+
+def test_setup_preserves_the_existing_human_path_setting(sandbox: Sandbox) -> None:
+    sandbox.git(
+        sandbox.neutral,
+        "config",
+        "--global",
+        "credential.https://github.com.useHttpPath",
+        "false",
+    )
+    assert main(["setup"]) == 0
+    assert (
+        sandbox.git(
+            sandbox.neutral,
+            "config",
+            "--get-urlmatch",
+            "credential.useHttpPath",
+            "https://github.com/Example/other.git",
+        ).strip()
+        == "false"
     )
 
 
@@ -211,18 +232,28 @@ def test_setup_writes_only_the_gate_runtime_its_gh_and_the_global_config(
         for path in human.root.rglob("*")
         if path.is_file()
     )
-    runtime = sorted(
-        f"state/github-gate/runtime/{path.name}"
-        for path in GATE_SOURCE.iterdir()
-        if path.suffix == ".py"
-    )
-    expected = [
+    expected = {
         f"bin/{CURRENT_PLATFORM.launcher_name()}",
         f"bin/{CURRENT_PLATFORM.approve_launcher_name()}",
         "home/.gitconfig",
-        *runtime,
-    ]
-    assert written == sorted(expected)
+        *(
+            f"bin/{CURRENT_PLATFORM.command_launcher_name(name)}"
+            for name in (
+                "git",
+                "tj-credentials",
+                "nuget-plugin-tj-credentials",
+                "dotnet",
+                "npm",
+                "docker",
+                "az",
+            )
+        ),
+    }
+    assert expected <= set(written)
+    assert all(
+        path in expected or path.startswith("state/github-gate/runtime/")
+        for path in written
+    )
 
 
 def test_setup_copies_shipped_packages_and_removes_stale_files(

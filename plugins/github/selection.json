@@ -15,13 +15,11 @@
       "kind": "utility",
       "profile": "core",
       "applicability": [
-        "explicitly selected employer GitHub access"
+        "explicitly declared repository credentials"
       ],
       "requires": [
-        "python",
-        "git",
-        "Git Credential Manager",
-        "secure credential backend"
+        "Python 3.12+",
+        "Git Credential Manager with an OS-backed store; native client requirements follow the declared endpoints"
       ],
       "provenance": [
         "house"
