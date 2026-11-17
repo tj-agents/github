@@ -6,6 +6,7 @@
   },
   "repository": "https://github.com/tj-agents/github",
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "keywords": [
     "github"
   ],
@@ -18,5 +19,5 @@
     "capabilities": [],
     "defaultPrompt": "Show me what github can do."
   },
-  "version": "076bb9ea4929"
+  "version": "48f68dc65ae4"
 }

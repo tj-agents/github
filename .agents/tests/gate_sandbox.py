@@ -297,6 +297,16 @@ class RecordingPlatform:
         return CURRENT_PLATFORM.approve_launcher_bytes(python, script)
 
     @staticmethod
+    def command_launcher_name(name: str) -> str:
+        return CURRENT_PLATFORM.command_launcher_name(name)
+
+    @staticmethod
+    def command_launcher_bytes(
+        python: Path, script: Path, arguments: Sequence[str]
+    ) -> bytes:
+        return CURRENT_PLATFORM.command_launcher_bytes(python, script, arguments)
+
+    @staticmethod
     def protect(path: Path, *, directory: bool) -> None:
         CURRENT_PLATFORM.protect(path, directory=directory)
 

@@ -7,5 +7,6 @@
   },
   "repository": "https://github.com/tj-agents/github",
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "keywords": ["github"]
 }

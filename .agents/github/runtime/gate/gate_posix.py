@@ -33,6 +33,17 @@ def approve_launcher_name() -> str:
     return "tj-approve"
 
 
+def command_launcher_name(name: str) -> str:
+    return name
+
+
+def command_launcher_bytes(
+    python: Path, script: Path, arguments: Sequence[str]
+) -> bytes:
+    command = shlex.join((str(python), "-B", str(script), *arguments))
+    return f'#!/bin/sh\n# {MARKER}\nexec {command} "$@"\n'.encode()
+
+
 def approve_launcher_bytes(python: Path, script: Path) -> bytes:
     command = " ".join(
         ("exec", shlex.quote(python.as_posix()), "-B", shlex.quote(script.as_posix()))
