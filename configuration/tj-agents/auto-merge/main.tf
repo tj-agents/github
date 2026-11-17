@@ -1,7 +1,3 @@
-data "github_repositories" "active" {
-  query = "org:${var.owner} archived:false"
-}
-
 data "github_organization" "owner" {
   name         = var.owner
   summary_only = true
@@ -24,10 +20,6 @@ resource "terraform_data" "auto_merge_inventory" {
   input = var.repositories
 
   lifecycle {
-    precondition {
-      condition     = toset(data.github_repositories.active.names) == var.repositories
-      error_message = "The active repository inventory changed; reconcile auto_merge_repositories before applying."
-    }
     precondition {
       condition     = trimspace(data.github_organization.owner.plan) != ""
       error_message = "The organization plan could not be determined; auto-merge eligibility is unknown."
