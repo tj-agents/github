@@ -1,14 +1,20 @@
-"""Give declared agent Git requests a path without changing human Git settings."""
+"""Give App and declared agent Git requests paths without changing human settings."""
 
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from gate_agent import agent_host
+from gate_app import OpenSSL
+from gate_declaration import AppAccess
 from gate_error import GateError
+from gate_install import Applies, applies
+from gate_platform import SupportedPlatform
 from gate_program import execute, real_program
+from github_gate import PLATFORMS, declarations_for
 
 # Only these local commands may repair an invalid committed declaration.
 # Every other command stays blocked until that declaration is valid.
@@ -69,6 +75,53 @@ def effective_directory(
     return target if target.is_absolute() else None
 
 
+def github_path_options(
+    executable: Path,
+    prefix: Sequence[str],
+    cwd: Path,
+    environment: Mapping[str, str],
+) -> list[str]:
+    """Override matching URL scopes only in this agent's Git process."""
+    try:
+        result = subprocess.run(
+            [
+                str(executable),
+                *prefix,
+                "config",
+                "--null",
+                "--name-only",
+                "--get-regexp",
+                r"^credential\..*\.usehttppath$",
+            ],
+            cwd=cwd,
+            env=dict(environment),
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            timeout=30,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise GateError(
+            "credential-client-unavailable: Git path settings failed"
+        ) from error
+    if result.returncode not in (0, 1):
+        raise GateError("credential-client-unavailable: Git path settings failed")
+    keys = {"credential.https://github.com.usehttppath"}
+    for key in result.stdout.split("\0"):
+        if (
+            key
+            and applies(key[len("credential.") : -len(".usehttppath")])
+            is not Applies.NEVER
+        ):
+            keys.add(key)
+    options: list[str] = []
+    for key in sorted(keys):
+        options.extend(("-c", f"{key}=true"))
+    return options
+
+
 def main() -> int:
     environment = dict(os.environ)
     arguments = sys.argv[1:]
@@ -82,7 +135,7 @@ def main() -> int:
         ):
             return execute(executable, arguments, cwd, environment)
         from credentials.context import Context
-        from credentials.model import Client, CredentialError
+        from credentials.model import Client
 
         home = Path(environment.get("USERPROFILE") or environment.get("HOME") or "~")
         state = Path(
@@ -95,7 +148,19 @@ def main() -> int:
             return execute(executable, arguments, cwd, environment)
         try:
             context = Context.load(target, environment, state, windows=os.name == "nt")
-        except CredentialError:
+            paths = context.declaration is not None and context.declaration.supports(
+                Client.GIT
+            )
+            if not paths:
+                declarations = declarations_for(
+                    Path(__file__).resolve(),
+                    PLATFORMS[SupportedPlatform(os.name)],
+                    OpenSSL(environment.get("PATH", "")),
+                )
+                paths = isinstance(
+                    declarations.resolve(target, environment, time.time()), AppAccess
+                )
+        except GateError:
             if command and command[0] in REPAIR_COMMANDS:
                 return execute(
                     executable,
@@ -104,11 +169,11 @@ def main() -> int:
                     {**environment, "GIT_NO_LAZY_FETCH": "1"},
                 )
             raise
-        if context.declaration is not None and context.declaration.supports(Client.GIT):
+        if paths:
             arguments = [
-                "-c",
-                "credential.https://github.com.useHttpPath=true",
-                *arguments,
+                *prefix,
+                *github_path_options(executable, prefix, cwd, environment),
+                *command,
             ]
         return execute(executable, arguments, cwd, environment)
     except GateError as error:
