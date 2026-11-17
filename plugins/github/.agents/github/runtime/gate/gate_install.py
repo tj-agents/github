@@ -20,8 +20,9 @@ from typing import assert_never
 from gate_app import Apps
 from gate_declaration import declared_app
 from gate_error import GateError
-from gate_gh import gh_on_path, is_gate_launcher
+from gate_gh import gh_on_path
 from gate_git import git, machine_environment
+from gate_launcher import is_gate_launcher
 from gate_platform import Platform
 
 ENTRY = "github_gate.py"
@@ -169,10 +170,33 @@ def launchers(machine: Machine) -> list[tuple[Path, bytes]]:
     """The commands setup installs in tj's bin directory, with their exact bytes."""
     platform, python = machine.platform, machine.python
     approve = machine.bin_directory / platform.approve_launcher_name()
-    return [
+    result = [
         (machine.launcher, platform.launcher_bytes(python, machine.script)),
         (approve, platform.approve_launcher_bytes(python, machine.approve_script)),
+        (
+            machine.bin_directory / platform.command_launcher_name("git"),
+            platform.command_launcher_bytes(
+                python, machine.runtime / "git_client.py", ()
+            ),
+        ),
     ]
+    entry = machine.runtime / "tj_credentials.py"
+    commands = {
+        "tj-credentials": (),
+        "nuget-plugin-tj-credentials": ("nuget",),
+        "dotnet": ("exec", "--tool", "dotnet", "--"),
+        "npm": ("exec", "--tool", "npm", "--"),
+        "docker": ("exec", "--tool", "docker", "--"),
+        "az": ("exec", "--tool", "az", "--"),
+    }
+    result.extend(
+        (
+            machine.bin_directory / platform.command_launcher_name(name),
+            platform.command_launcher_bytes(python, entry, arguments),
+        )
+        for name, arguments in commands.items()
+    )
+    return result
 
 
 def check_launcher(machine: Machine) -> list[str]:

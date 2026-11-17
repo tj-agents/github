@@ -17,8 +17,9 @@ python -B .agents/github/utility/collaboration/scripts/github_collaboration.py -
 See the [request examples and behavior](.agents/github/utility/collaboration/SKILL.md).
 Use `python3` on Linux. Both hosts receive the same generated skill and shipped script.
 
-For organization-scoped employer credentials, use [GitHub access](.agents/github/utility/access/SKILL.md).
-It supplies browser onboarding, secure OS storage, rotation and diagnostic checks with employer-owned data.
+For repository-declared Git/gh/MCP, package registry and Azure DevOps credentials, use
+[GitHub access](.agents/github/utility/access/SKILL.md). It supplies browser onboarding, OS-vault storage,
+rotation, expiry checks and native client routing from a committed declaration shared by linked worktrees.
 
 This package owns GitHub interaction mechanics. Core owns engineering review and delivery;
 work-items owns record semantics; github-actions owns CI workflow standards and generators.
@@ -74,7 +75,7 @@ is a human. A human always reaches the real `gh` and their own Git credential he
 | Who and where | `gh` | Git over `https://github.com` |
 | --- | --- | --- |
 | Human, anywhere | Real `gh`, environment unchanged | The human's own helpers |
-| Agent, access resolves to `human` | Real `gh`, environment unchanged | The human's own helpers |
+| Agent, access resolves to `human` | The declared credential when selected for gh, otherwise the human's login | The declared Git credential when selected, otherwise the human's own helpers |
 | Agent, access resolves to `app` | Real `gh` with `GH_TOKEN` set to the App's installation token | The App's installation token |
 
 When access resolves to `app`, the target account comes from the command's `--repo`, URL, API path or
@@ -94,11 +95,12 @@ python -B <plugin>/.agents/github/runtime/gate/github_gate.py setup --check
 ```
 
 Setup copies the runtime to `~/.agents-state/github-gate/runtime/` (`AGENT_STATE_DIRECTORY`
-moves it). It also installs the `gh` shim (`gh.exe` on Windows) and the `tj-approve`
-launcher (`tj-approve.cmd` on Windows) in tj's bin directory: `%LOCALAPPDATA%\Programs\tj` on
-Windows, otherwise `~/.local/bin`, or `TJ_BIN_DIR`. That directory must come before the real
-`gh` on `PATH`; the shim finds the real `gh` by skipping its own launchers. Setup refuses to
-replace a `gh` or `tj-approve` there that it did not install. Setup then appends a marked block to the end of your global Git configuration:
+moves it). It installs `gh`, `tj-approve` and the credential broker's native client launchers in
+tj's bin directory: `%LOCALAPPDATA%\Programs\tj` on Windows, otherwise `~/.local/bin`, or
+`TJ_BIN_DIR`. See [GitHub access](.agents/github/utility/access/SKILL.md) for the credential
+commands and client requirements. Keep that directory before the real tools on `PATH`; the shims
+skip their own launchers when finding the native client. Setup refuses to replace foreign commands.
+It then appends a marked block to the end of your global Git configuration:
 
 ```text
 # >>> github@tj-agents access gate (written by setup; do not edit) >>>
@@ -202,9 +204,9 @@ are host permission rules, not an OS boundary around your account.
   repositories an `https://github.com/...` remote.
 - The shim and helper run the Python that ran setup. After removing that Python, rerun
   `tj install`.
-- The employer [GitHub access](.agents/github/utility/access/SKILL.md) utility is separate. Its
-  untracked per-checkout binding uses the same path, and the gate ignores it because it is not
-  committed.
+- [Declared credentials](.agents/github/utility/access/SKILL.md) use `.agents/credentials.json`.
+  The App declaration remains the source of agent Git/gh App selection; package clients use their
+  explicitly declared credential type.
 
 ## Development
 

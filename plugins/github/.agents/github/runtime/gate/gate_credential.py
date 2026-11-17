@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
 
+from credentials.git import configured_reply
 from gate_access import Declarations
 from gate_agent import agent_host
 from gate_app import GitHubApp
@@ -118,7 +119,7 @@ def agent_reply(
     access = declarations.resolve(cwd, environment, now)
     match access:
         case HumanAccess():
-            return ""
+            return configured_reply(request, cwd, environment, now)
         case AppAccess(slug=slug):
             app = declarations.apps(slug)
             return app_credential(request, environment, cwd, app, now)
