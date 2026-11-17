@@ -31,6 +31,8 @@ Machine setup installs `tj-credentials`, the native NuGet provider and the Git/d
 launchers. Declared agent Git requests include their actual repository path; human Git settings and
 credential-helper behavior stay intact. Git and gh use the access gate. The plugin supplies the scoped, read-only GitHub MCP
 connection. Keep tj's bin directory before the real tools on PATH; setup refuses to replace foreign commands.
+For an invalid committed declaration, Git `status`, `diff`, `add` and `commit` remain available for repair.
+Agent Git network commands report the declaration error until that repair is committed.
 
 Run `check` before requesting human action. It checks identity, declared scopes and resource access,
 and reports invalid authentication, wrong accounts, SSO, permissions, network failures and expiry separately.
