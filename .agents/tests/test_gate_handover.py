@@ -40,8 +40,8 @@ def decision(value: str) -> tuple[tuple[str, ...], subprocess.CompletedProcess[s
     return key, done(value + "\n")
 
 
-def link_key() -> tuple[str, ...]:
-    return ("tj", "item", "--profile", "github", "link", ITEM, URL)
+def link_key(item: str = ITEM) -> tuple[str, ...]:
+    return ("tj", "item", "link", item, URL)
 
 
 @pytest.fixture
@@ -71,22 +71,30 @@ def handed(
     return status, platform
 
 
-def review_required() -> FakeHandover:
+def review_required(item: str = ITEM) -> FakeHandover:
     key, reply = decision("REVIEW_REQUIRED")
     return FakeHandover(
         launched=(0, URL + "\n"),
         replies={
             key: reply,
-            ("agent-store", "show", "claude:me"): session(ITEM),
-            link_key(): done(),
+            ("agent-store", "show", "claude:me"): session(item),
+            link_key(item): done(),
         },
     )
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        ITEM,
+        "azure-devops:dev.azure.com/sample-org:10",
+        "jira:example.atlassian.net:DEMO-10",
+    ],
+)
 def test_a_pr_that_needs_review_is_linked_copied_and_reported(
-    repository: Path, agent: dict[str, str], declarations: Declarations
+    repository: Path, agent: dict[str, str], declarations: Declarations, item: str
 ) -> None:
-    fake = review_required()
+    fake = review_required(item)
     status, platform = handed(
         ["pr", "create", "--title", "Change", "--body", "Why"],
         fake,
@@ -101,11 +109,11 @@ def test_a_pr_that_needs_review_is_linked_copied_and_reported(
     assert (scoped["GH_TOKEN"], capture) == (CACHED_TOKEN, True)
     [(_, decision_environment), _, (link, link_environment)] = fake.runs
     assert decision_environment["GH_TOKEN"] == CACHED_TOKEN
-    assert link == link_key()
+    assert link == link_key(item)
     assert link_environment == agent
     assert fake.copied == [APPROVE_LINE]
     assert fake.reports == [
-        f"{URL} needs your review: linked it to {ITEM}, and `! tj approve` is on "
+        f"{URL} needs your review: linked it to {item}, and `! tj approve` is on "
         "your clipboard; paste it into this session to approve"
     ]
 
@@ -132,7 +140,7 @@ def test_a_failed_link_is_reported_without_changing_gh_status(
     assert fake.copied == []
     [report] = fake.reports
     assert f"`tj item link {ITEM}` failed (item not found)" in report
-    assert f"`tj item --profile github link <ref> {URL}`" in report
+    assert f"`tj item link <ref> {URL}`" in report
     assert "`agent-store link --session claude:me --item <ref>`" in report
 
 
