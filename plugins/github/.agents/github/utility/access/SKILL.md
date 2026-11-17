@@ -27,8 +27,9 @@ resources each client needs. The broker reads the current commit, then the fetch
 branch has no declaration. Linked worktrees share account enrollment; no checkout setup or host activation
 is required. An explicit empty credential list opts that branch out. Uncommitted declarations are ignored.
 
-Machine setup installs `tj-credentials`, the native NuGet provider and the dotnet/npm/Docker/Azure CLI
-launchers. Git and gh use the existing access gate. The plugin supplies the scoped, read-only GitHub MCP
+Machine setup installs `tj-credentials`, the native NuGet provider and the Git/dotnet/npm/Docker/Azure CLI
+launchers. Declared agent Git requests include their actual repository path; human Git settings and
+credential-helper behavior stay intact. Git and gh use the access gate. The plugin supplies the scoped, read-only GitHub MCP
 connection. Keep tj's bin directory before the real tools on PATH; setup refuses to replace foreign commands.
 
 Run `check` before requesting human action. It checks identity, declared scopes and resource access,
