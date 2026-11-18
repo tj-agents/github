@@ -517,13 +517,13 @@ def test_package_clients_supply_the_repository_placeholder_only_to_the_child(
     current = replace(
         client_context,
         declaration=Declaration((placeholder,)),
-        environment={**client_context.environment, "GITHUB_NUGET_PASSWORD": "stale"},
+        environment={**client_context.environment, "PACKAGES_TOKEN": "stale"},
     )
     assert dotnet.run(current, current.cwd / "dotnet", ("restore",), NOW) == 29
     assert npm.run(current, current.cwd / "pnpm", ("install",), NOW) == 29
     for call in child_calls:
-        assert call.environment["GITHUB_NUGET_PASSWORD"] == NPM_SECRET.value
-    assert current.environment["GITHUB_NUGET_PASSWORD"] == "stale"
+        assert call.environment["PACKAGES_TOKEN"] == NPM_SECRET.value
+    assert current.environment["PACKAGES_TOKEN"] == "stale"
 
 
 def with_placeholder(credential: Credential) -> Credential:
@@ -531,12 +531,12 @@ def with_placeholder(credential: Credential) -> Credential:
     return replace(
         credential,
         endpoints=(
-            replace(npm_endpoint, variable="GITHUB_NUGET_PASSWORD"),
+            replace(npm_endpoint, variable="PACKAGES_TOKEN"),
             Endpoint(
                 Client.NUGET,
                 "https://nuget.pkg.github.com/Example/index.json",
                 "https://nuget.pkg.github.com/Example/download/sample/index.json",
-                variable="GITHUB_NUGET_PASSWORD",
+                variable="PACKAGES_TOKEN",
             ),
             git_endpoint,
         ),

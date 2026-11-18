@@ -70,8 +70,8 @@ own client; this broker does not exchange it for a PAT or widen its permissions.
 Keep package sources and mappings in the repository's normal client configuration. A NuGet
 `packageSourceCredentials` entry overrides the provider, and a project `.npmrc` token overrides the
 broker's user configuration. When those files must stay unchanged, declare the environment placeholder
-they read as the endpoint's optional `variable`, such as `"variable":"GITHUB_NUGET_PASSWORD"` for
-`%GITHUB_NUGET_PASSWORD%` or `${GITHUB_NUGET_PASSWORD}`. The dotnet, npm and pnpm launchers then set it in
+they read as the endpoint's optional `variable`, such as `"variable":"PACKAGES_TOKEN"` for
+`%PACKAGES_TOKEN%` or `${PACKAGES_TOKEN}`. The dotnet, npm and pnpm launchers then set it in
 that client's child environment only, after the same checks; it never reaches the caller's environment.
 Otherwise remove the broker-managed source's credential entry. Preserve unrelated feeds and providers.
 
