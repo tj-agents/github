@@ -18,9 +18,18 @@ def run(
         or context.declaration is None
     ):
         return children.execute(executable, arguments, context.cwd, context.environment)
+    environment = private_environment(context.environment)
     for credential in context.declaration.credentials:
-        if any(endpoint.client == Client.NUGET for endpoint in credential.endpoints):
-            context.service(credential).check(now)
-    return children.execute(
-        executable, arguments, context.cwd, private_environment(context.environment)
-    )
+        placeholders = [
+            endpoint.variable
+            for endpoint in credential.endpoints
+            if endpoint.client == Client.NUGET
+        ]
+        if placeholders:
+            secret = context.service(credential).authorize(now)
+            environment.update(
+                (placeholder, secret.value)
+                for placeholder in placeholders
+                if placeholder
+            )
+    return children.execute(executable, arguments, context.cwd, environment)

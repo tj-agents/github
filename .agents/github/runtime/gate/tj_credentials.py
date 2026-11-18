@@ -40,6 +40,7 @@ class Runner(Protocol):
 RUNNERS: Mapping[Tool, Runner] = {
     Tool.DOTNET: dotnet,
     Tool.NPM: npm,
+    Tool.PNPM: npm,
     Tool.DOCKER: docker,
     Tool.AZURE_CLI: azure_cli,
 }
