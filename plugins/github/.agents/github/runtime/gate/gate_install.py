@@ -186,6 +186,7 @@ def launchers(machine: Machine) -> list[tuple[Path, bytes]]:
         "nuget-plugin-tj-credentials": ("nuget",),
         "dotnet": ("exec", "--tool", "dotnet", "--"),
         "npm": ("exec", "--tool", "npm", "--"),
+        "pnpm": ("exec", "--tool", "pnpm", "--"),
         "docker": ("exec", "--tool", "docker", "--"),
         "az": ("exec", "--tool", "az", "--"),
     }

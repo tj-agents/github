@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
-from credentials import http, model, providers
+from credentials import http, model, providers, selected
 from credentials.model import Client, Credential, CredentialError, Declaration
 from credentials.service import Service
 from credentials.vault import GCMVault, State
@@ -37,6 +37,8 @@ class Context:
         windows: bool,
     ) -> Context:
         declaration = model.committed(cwd, environment)
+        if declaration is None:
+            declaration = selected.selected(cwd, environment)
         if declaration is not None:
             providers.validate(declaration)
         return cls(cwd, environment, state_root, windows, declaration)

@@ -1,8 +1,18 @@
 # Credential declarations
 
-The broker reads the `credentials` section of `.agents/repository.json` at the current commit, falling
-back to the fetched remote default only when that commit has no such section; the file's other sections,
-such as `access`, do not affect it. This declaration is public configuration; it contains no secret.
+The broker takes the first declaration it finds, in this order:
+
+1. The `credentials` section of the committed `.agents/repository.json` at the current commit.
+2. That section at the fetched remote default, `origin/HEAD`.
+3. The `credentials.json` of each tj-agents plugin the checkout's `.agents/plugins.json` selects, or the
+   main checkout's when the linked worktree has none. It is read from the installed copy Claude records
+   for the main checkout (local, then project scope), else the user-scope install.
+
+A committed section, including an explicit empty list, is authoritative for repositories Tommy owns.
+Employer repositories commit nothing TJ Agents-specific: their local selection, kept in
+`.git/info/exclude`, names the employer plugin, and that plugin ships the profile. A plugin profile uses
+this same format with only `schema_version` and `credentials`. The file's other sections, such as
+`access`, do not affect the broker. A declaration is public configuration; it contains no secret.
 The same provider, owner and login share one enrollment across repositories and worktrees.
 
 ```json
@@ -49,7 +59,7 @@ probes must name an actual resource inside the declared owner, not a public regi
 | --- | --- | --- |
 | `git`, `gh`, `mcp` | `https://github.com/Example/private-project` | A repository read checks access. An organization-wide URL uses a declared repository probe. Git needs 2.46+; gh uses a closed command grammar. MCP exposes only the three inherited read tools through the pinned upstream server. |
 | `nuget` | `https://nuget.pkg.github.com/Example/index.json` | A private package versions URL, such as the example above. Native provider discovery requires NuGet 6.13+ (.NET SDK 9.0.200+). |
-| `npm` | `https://npm.pkg.github.com` | Add `"scope":"@example"` and `"probe":"https://npm.pkg.github.com/@example/sample"`. npm accepts one credential per registry host; its temporary user config contains variable references, while the value exists only in the child environment. |
+| `npm` | `https://npm.pkg.github.com` | Add `"scope":"@example"` and `"probe":"https://npm.pkg.github.com/@example/sample"`. npm accepts one credential per registry host; its temporary user config contains variable references, while the value exists only in the child environment. The npm and pnpm launchers serve it. |
 | `container` | `https://ghcr.io/example` | Use `https://ghcr.io/v2/example/image/manifests/v1` or the intended immutable digest. Docker must select an OS-backed credential helper. Another saved account is a conflict. The launcher verifies, synchronizes and reads back that helper before running Docker. |
 | `azure-devops` | `https://dev.azure.com/example` | Use `azure-devops-pat`, the expected authenticated identity and the intended `vso.*` scopes. The human selects an organization-scoped PAT. The Azure CLI launcher fixes the organization and supplies its required child-only PAT variable. |
 
@@ -57,10 +67,13 @@ Azure DevOps PATs may also serve NuGet endpoints on `pkgs.dev.azure.com` inside 
 organization, with explicit resource probes. Existing native Microsoft Entra sign-in remains with its
 own client; this broker does not exchange it for a PAT or widen its permissions.
 
-Keep package sources and mappings in the repository's normal client configuration. Remove a NuGet
-`packageSourceCredentials` entry for a broker-managed source so its password or environment placeholder
-does not override the provider. Remove the retired long-lived password variable through the environment's
-owning setup command. The broker never exports that variable. Preserve unrelated feeds and providers.
+Keep package sources and mappings in the repository's normal client configuration. A NuGet
+`packageSourceCredentials` entry overrides the provider, and a project `.npmrc` token overrides the
+broker's user configuration. When those files must stay unchanged, declare the environment placeholder
+they read as the endpoint's optional `variable`, such as `"variable":"GITHUB_NUGET_PASSWORD"` for
+`%GITHUB_NUGET_PASSWORD%` or `${GITHUB_NUGET_PASSWORD}`. The dotnet, npm and pnpm launchers then set it in
+that client's child environment only, after the same checks; it never reaches the caller's environment.
+Otherwise remove the broker-managed source's credential entry. Preserve unrelated feeds and providers.
 
 For source development, invoke `python -B <plugin-root>/.agents/github/runtime/gate/tj_credentials.py`
 with the same command arguments. Installed clients use the setup-created launchers; they do not depend on
