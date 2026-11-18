@@ -506,7 +506,7 @@ def test_a_profile_applies_only_to_repositories_that_select_its_plugin(
 
 @pytest.mark.parametrize(
     ("client", "variable"),
-    [(Client.GIT, "GITHUB_NUGET_PASSWORD"), (Client.NUGET, "lower_case")],
+    [(Client.GIT, "PACKAGES_TOKEN"), (Client.NUGET, "lower_case")],
 )
 def test_placeholder_variables_are_upper_case_and_only_for_package_clients(
     client: Client, variable: str
