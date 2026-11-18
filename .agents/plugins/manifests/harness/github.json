@@ -11,10 +11,6 @@
         "repository": "tj-agents/marketplace"
       }
     ],
-    "plugins": [
-      "tj-agents/github",
-      "tj-agents/base"
-    ],
     "hooks": [],
     "setup": {
       "script": ".agents/github/runtime/gate/github_gate.py",
