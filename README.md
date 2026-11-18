@@ -32,27 +32,31 @@ The access gate decides, per command, whose GitHub credentials an agent uses. It
 tooling, not a skill: `tj install` runs its setup for any repository that selects
 `github@tj-agents`, and nothing in a session has to load or invoke it.
 
-Access is declared in `.agents/github-access.json`, in one of two forms:
+Access is the `access` section of `.agents/repository.json`, the one file a repository commits
+for its agent and merge settings. Its `merge` section is github-actions' merge policy and its
+`credentials` section the [declared credentials](.agents/github/utility/access/SKILL.md); each
+section resolves on its own, so a file without an `access` section leaves access to the next
+step below. The section takes one of two forms:
 
 ```json
-{"schema_version": 1, "method": "human"}
-{"schema_version": 1, "method": "app", "app": "<github-app-slug>"}
+{"schema_version": 1, "access": {"method": "human"}}
+{"schema_version": 1, "access": {"method": "app", "app": "<github-app-slug>"}}
 ```
 
-For an agent, the first of these that exists decides:
+For an agent, the first of these with an `access` section decides:
 
 1. **The repository's own file**, committed at `HEAD`. An untracked or uncommitted file is
-   ignored, and each worktree reads its own commit. Commit `{"method": "human"}` to opt one
-   repository out of its owner's default.
+   ignored, and each worktree reads its own commit. Commit `"access": {"method": "human"}` to
+   opt one repository out of its owner's default.
 2. **The owner's default**: the same file on the default branch of the `<owner>/.github`
    repository. The owner is the account of the repository's `origin` remote on github.com; a
    repository without one skips this step.
 3. Otherwise, `human`.
 
 ```text
-tj-agents/.github   .agents/github-access.json   {"schema_version": 1, "method": "app", "app": "sample-bot"}
-tj-agents/notes     (no file)                     agents act as sample-bot
-tj-agents/sandbox   {"method": "human", ...}      agents use the human's login
+tj-agents/.github   .agents/repository.json          {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
+tj-agents/notes     (no file, or no access section)  agents act as sample-bot
+tj-agents/sandbox   "access": {"method": "human"}    agents use the human's login
 ```
 
 The gate reads an owner's default only when an App this machine has enrolled is installed on
@@ -63,8 +67,10 @@ has no default. The result is cached in the gate's state
 directory for 10 minutes; edits take effect after that. If the default cannot be read, agents
 in that owner's repositories stop with the reason until it can.
 
-The fields must match exactly. Any other method or field makes a declaration invalid. An invalid
-repository file or owner default stops agents there, and a repository file naming an App this
+The fields must match exactly. The file is a JSON object with `schema_version` 1 and only the
+`access`, `merge` and `credentials` sections; an `access` section holds exactly `method`, plus `app`
+for `app`. Anything else makes the file invalid. An invalid repository file or owner default
+stops agents there, and a repository file naming an App this
 machine has not enrolled stops them with the onboarding command. Humans are never affected and
 never cause an owner lookup.
 
@@ -212,7 +218,8 @@ are host permission rules, not an OS boundary around your account.
   repositories an `https://github.com/...` remote.
 - The shim and helper run the Python that ran setup. After removing that Python, rerun
   `tj install`.
-- [Declared credentials](.agents/github/utility/access/SKILL.md) use `.agents/credentials.json`.
+- [Declared credentials](.agents/github/utility/access/SKILL.md) use the `credentials` section of
+  `.agents/repository.json`.
   The App declaration remains the source of agent Git/gh App selection; package clients use their
   explicitly declared credential type.
 

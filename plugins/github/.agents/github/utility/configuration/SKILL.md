@@ -70,13 +70,19 @@ mapping each secret name to a source the workspace's sensitive `secret_values` s
 }
 ```
 
-Each repository opts in to approval separately. `requires_approval: true` creates a separate
-`merge-policy-review` ruleset requiring one approval with no bypass actors, including for Renovate. False
-creates no such gate. Required status checks in `merge-policy` remain in force either way. A repository
-using the generated gate may not also declare a ruleset named `merge-policy-review`.
+Approval comes from each declared repository's merge policy, read from GitHub at plan time: the `merge`
+section of its committed `.agents/repository.json` or, when it has none, the `merge` section of the owner
+default in the `<owner>/.github` repository, which a repository's section replaces entirely (the section's
+schema is github-actions' `github-actions:merge-policy`). `approval: human` generates a
+`merge-policy-review` ruleset requiring one approval and `automated` one requiring its `review_check`;
+`none`, or no merge section at all, generates nothing. Only deploy keys, under `default_branch_push: ci`,
+bypass it; Renovate does not. Required status checks in the declared `merge-policy` ruleset remain in force
+either way. No repository may declare a ruleset named `merge-policy-review`, and an invalid file or merge
+section fails the plan. The App reads contents to see them; a merged change takes effect at the next apply,
+so dispatch the `configuration` workflow after one.
 
 ```json
-"repositories": { "example": { "requires_approval": false, "rulesets": {} } }
+{ "schema_version": 1, "merge": { "approval": "human", "merge": "agents", "default_branch_push": "none", "required_checks": ["ci-required"] } }
 ```
 
 Secret values live only in Infisical. `secrets` names the owner's Infisical project and GitHub App connection;

@@ -23,11 +23,12 @@ from typing import assert_never
 
 from gate_access import OWNER_REPOSITORY, decoded
 from gate_agent import AgentHost
-from gate_declaration import DECLARATION, AppAccess, HumanAccess, parse
+from gate_declaration import Access, AppAccess, HumanAccess, parse
 from gate_error import GateError
 from gate_gh import real_gh
 from gate_process import Run, reason, run_captured
 from gate_session import AgentStore, current_session, descendant_items
+from repository_configuration import CONFIGURATION
 
 TIMEOUT_SECONDS = 30
 ITEM_TIMEOUT_SECONDS = 120
@@ -110,26 +111,30 @@ class Approval:
         return login
 
     def declared_app(self, owner: str, repository: str, ref: str) -> str | None:
-        """The App slug the base branch, else the owner's default, declares."""
+        """The App slug the base branch's access, else the owner's default, declares."""
         key = (owner.lower(), repository.lower(), ref)
         if key not in self.apps:
             path = (
-                f"repos/{owner}/{repository}/contents/{DECLARATION}?ref="
+                f"repos/{owner}/{repository}/contents/{CONFIGURATION}?ref="
                 + urllib.parse.quote(ref, safe="")
             )
-            text = self.contents(path, f"{owner}/{repository}@{ref}/{DECLARATION}")
-            if text is None:
+            text = self.contents(path, f"{owner}/{repository}@{ref}/{CONFIGURATION}")
+            declared = None if text is None else parse(text)
+            if declared is None:
                 self.apps[key] = self.owner_app(owner)
             else:
-                self.apps[key] = app_slug(text)
+                self.apps[key] = app_slug(declared)
         return self.apps[key]
 
     def owner_app(self, owner: str) -> str | None:
         if owner.lower() not in self.owners:
-            path = f"repos/{owner}/{OWNER_REPOSITORY}/contents/{DECLARATION}"
-            where = f"{owner}/{OWNER_REPOSITORY}/{DECLARATION}"
+            path = f"repos/{owner}/{OWNER_REPOSITORY}/contents/{CONFIGURATION}"
+            where = f"{owner}/{OWNER_REPOSITORY}/{CONFIGURATION}"
             text = self.contents(path, where)
-            self.owners[owner.lower()] = None if text is None else app_slug(text)
+            declared = None if text is None else parse(text)
+            self.owners[owner.lower()] = (
+                None if declared is None else app_slug(declared)
+            )
         return self.owners[owner.lower()]
 
     def contents(self, path: str, where: str) -> str | None:
@@ -145,8 +150,7 @@ class Approval:
         return decoded(response, where)
 
 
-def app_slug(text: str) -> str | None:
-    access = parse(text)
+def app_slug(access: Access) -> str | None:
     match access:
         case HumanAccess():
             return None

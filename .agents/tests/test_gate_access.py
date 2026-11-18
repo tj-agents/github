@@ -20,8 +20,16 @@ from gate_sandbox import (
     unused_handover,
 )
 
-APP = json.dumps({"schema_version": 1, "method": "app", "app": "sample-bot"})
-HUMAN = json.dumps({"schema_version": 1, "method": "human"})
+APP = json.dumps(
+    {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
+)
+HUMAN = json.dumps({"schema_version": 1, "access": {"method": "human"}})
+MERGE_ONLY = json.dumps(
+    {
+        "schema_version": 1,
+        "merge": {"approval": "none", "merge": "agents", "default_branch_push": "none"},
+    }
+)
 TRANSPORT = CredentialRequest.parse(
     "capability[]=authtype\nprotocol=https\nhost=github.com\n"
 )
@@ -48,6 +56,7 @@ def real(sandbox: Sandbox) -> Path:
         (None, APP, AppAccess("sample-bot")),
         (None, HUMAN, HumanAccess()),
         (None, None, HumanAccess()),
+        (None, MERGE_ONLY, HumanAccess()),
         (json.loads(HUMAN), APP, HumanAccess()),
         (json.loads(APP), HUMAN, AppAccess("sample-bot")),
     ],
@@ -67,6 +76,18 @@ def test_resolve_prefers_the_repository_then_its_owners_default(
     assert declarations.resolve(repository, agent(sandbox), NOW) == expected
     reads = github.owner_reads()
     assert reads == ([] if committed is not None else [(COVERED, CACHED_TOKEN)])
+
+
+def test_a_repository_without_an_access_section_takes_its_owners_default(
+    sandbox: Sandbox, declarations: Declarations, github: FakeGitHub
+) -> None:
+    sandbox.enrol_cached()
+    github.owner_defaults[COVERED] = APP
+    repository = sandbox.repository("repository", json.loads(MERGE_ONLY))
+    assert declarations.resolve(repository, agent(sandbox), NOW) == AppAccess(
+        "sample-bot"
+    )
+    assert github.owner_reads() == [(COVERED, CACHED_TOKEN)]
 
 
 @pytest.mark.parametrize(
@@ -150,7 +171,9 @@ def test_an_invalid_owner_default_refuses_agents(
     sandbox: Sandbox, declarations: Declarations, github: FakeGitHub
 ) -> None:
     sandbox.enrol_cached()
-    github.owner_defaults[COVERED] = '{"schema_version": 1, "method": "token"}'
+    github.owner_defaults[COVERED] = (
+        '{"schema_version": 1, "access": {"method": "token"}}'
+    )
     repository = sandbox.repository("repository")
     with pytest.raises(OwnerDefaultError, match=r"sample-org/\.github: .*human or app"):
         declarations.resolve(repository, agent(sandbox), NOW)
