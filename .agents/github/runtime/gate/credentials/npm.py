@@ -44,6 +44,11 @@ def run(
         secret = current.authorize(now)
         variable = "TJ_CREDENTIAL_" + credential.key.upper()
         environment[variable] = secret.value
+        environment.update(
+            (endpoint.variable, secret.value)
+            for endpoint in endpoints
+            if endpoint.variable is not None
+        )
         for endpoint in endpoints:
             host = urllib.parse.urlsplit(endpoint.url).netloc
             if host in hosts:
