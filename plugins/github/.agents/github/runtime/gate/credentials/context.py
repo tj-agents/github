@@ -53,7 +53,7 @@ class Context:
     def named(self, name: str) -> Service:
         if self.declaration is None:
             raise CredentialError(
-                "credentials-undeclared: declare .agents/credentials.json"
+                "credentials-undeclared: declare credentials in .agents/repository.json"
             )
         return self.service(self.declaration.named(name))
 

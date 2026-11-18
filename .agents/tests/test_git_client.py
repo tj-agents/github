@@ -16,7 +16,7 @@ from test_declared_credentials import document
 def test_app_agents_enable_paths_without_changing_human_settings(
     sandbox: Sandbox, owner_default: bool, marker: str | None
 ) -> None:
-    app = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+    app = {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
     repository = sandbox.repository("app", None if owner_default else app)
     sandbox.git(
         sandbox.neutral, "config", "--global", "credential.useHttpPath", "false"
@@ -72,7 +72,7 @@ def test_app_agents_enable_paths_without_changing_human_settings(
 
 
 def test_app_paths_from_an_explicit_bare_git_directory(sandbox: Sandbox) -> None:
-    app = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+    app = {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
     source = sandbox.repository("seed", app)
     bare = sandbox.root / "arbitrary-directory"
     sandbox.git(sandbox.root, "clone", "--bare", str(source), str(bare))
@@ -103,7 +103,7 @@ def test_invalid_declaration_repair_does_not_lazily_fetch_missing_blobs(
     sandbox: Sandbox,
 ) -> None:
     seed = sandbox.repository("seed")
-    declaration = seed / ".agents/credentials.json"
+    declaration = seed / ".agents/repository.json"
     declaration.parent.mkdir()
     declaration.write_text("{invalid", encoding="utf-8")
     history = seed / "history.txt"
@@ -164,10 +164,10 @@ def test_only_declared_agents_enable_repository_paths(
         ("repo",),
         (Endpoint(Client.GIT, "https://github.com/Example/one"),),
     )
-    declaration = repository / ".agents/credentials.json"
+    declaration = repository / ".agents/repository.json"
     declaration.parent.mkdir()
     declaration.write_text(document(credential), encoding="utf-8")
-    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "add", ".agents/repository.json")
     sandbox.git(repository, "commit", "-m", "declare")
     sandbox.git(
         sandbox.neutral, "config", "--global", "credential.useHttpPath", "false"
@@ -250,10 +250,10 @@ def test_agent_git_uses_the_effective_repository_without_changing_human_settings
         ("repo",),
         (Endpoint(Client.GIT, "https://github.com/Example/one"),),
     )
-    declaration = declared / ".agents/credentials.json"
+    declaration = declared / ".agents/repository.json"
     declaration.parent.mkdir()
     declaration.write_text(document(credential), encoding="utf-8")
-    sandbox.git(declared, "add", ".agents/credentials.json")
+    sandbox.git(declared, "add", ".agents/repository.json")
     sandbox.git(declared, "commit", "-qm", "declare")
     sandbox.git(
         sandbox.neutral, "config", "--global", "credential.useHttpPath", "false"
@@ -302,10 +302,10 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
     sandbox: Sandbox,
 ) -> None:
     repository = sandbox.repository("repair", origin="https://github.com/Example/one")
-    declaration = repository / ".agents/credentials.json"
+    declaration = repository / ".agents/repository.json"
     declaration.parent.mkdir()
     declaration.write_text('{"schema_version":1,"credentials":', encoding="utf-8")
-    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "add", ".agents/repository.json")
     sandbox.git(repository, "commit", "-qm", "malformed declaration")
     assert main(["setup"]) == 0
 
@@ -335,7 +335,7 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
         native=True,
     )
     assert refused.returncode != 0
-    assert "credentials-invalid" in refused.stderr
+    assert ".agents/repository.json is not valid JSON" in refused.stderr
     assert "told us to quit" in refused.stderr
     status = run("status", "--short")
     assert status.returncode == 0, (status.stdout, status.stderr)
@@ -349,14 +349,14 @@ def test_malformed_committed_declaration_can_be_repaired_with_agent_git(
     )
     repaired = document(credential)
     declaration.write_text(repaired, encoding="utf-8")
-    difference = run("diff", "--", ".agents/credentials.json")
+    difference = run("diff", "--", ".agents/repository.json")
     assert difference.returncode == 0, (difference.stdout, difference.stderr)
     assert difference.stdout
-    added = run("add", ".agents/credentials.json")
+    added = run("add", ".agents/repository.json")
     assert added.returncode == 0, (added.stdout, added.stderr)
     committed = run("commit", "-qm", "repair declaration")
     assert committed.returncode == 0, (committed.stdout, committed.stderr)
-    assert sandbox.git(repository, "show", "HEAD:.agents/credentials.json") == repaired
+    assert sandbox.git(repository, "show", "HEAD:.agents/repository.json") == repaired
     configured = run(
         "config",
         "--get-urlmatch",
@@ -371,10 +371,10 @@ def test_malformed_committed_declaration_blocks_remote_commands(
     sandbox: Sandbox,
 ) -> None:
     repository = sandbox.repository("malformed")
-    declaration = repository / ".agents/credentials.json"
+    declaration = repository / ".agents/repository.json"
     declaration.parent.mkdir()
     declaration.write_text('{"schema_version":1,"credentials":', encoding="utf-8")
-    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "add", ".agents/repository.json")
     sandbox.git(repository, "commit", "-qm", "malformed declaration")
     remote = sandbox.root / "remote.git"
     sandbox.git(sandbox.root, "clone", "--bare", str(repository), str(remote))
@@ -412,10 +412,10 @@ def test_bare_committed_declaration_enables_paths_only_for_agents(
         ("repo",),
         (Endpoint(Client.GIT, "https://github.com/Example/one"),),
     )
-    declaration = repository / ".agents/credentials.json"
+    declaration = repository / ".agents/repository.json"
     declaration.parent.mkdir()
     declaration.write_text(document(credential), encoding="utf-8")
-    sandbox.git(repository, "add", ".agents/credentials.json")
+    sandbox.git(repository, "add", ".agents/repository.json")
     sandbox.git(repository, "commit", "-qm", "declare")
     bare = sandbox.root / "bare.git"
     sandbox.git(sandbox.root, "clone", "--bare", str(repository), str(bare))

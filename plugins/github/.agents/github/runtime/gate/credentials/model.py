@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import urllib.parse
 from collections.abc import Mapping
@@ -11,23 +10,21 @@ from pathlib import Path
 
 from gate_error import GateError
 from gate_git import git, machine_environment
+from repository_configuration import (
+    CONFIGURATION,
+    ConfigurationError,
+    Section,
+    sections,
+)
+from repository_configuration import committed as committed_configuration
 
-DECLARATION = ".agents/credentials.json"
+WHERE = f"the credentials in {CONFIGURATION}"
 NAME = re.compile(r"[a-z][a-z0-9-]{0,62}")
 OWNER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
 
 
 class CredentialError(GateError):
     pass
-
-
-def _object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise CredentialError("credentials-invalid: duplicate JSON property")
-        result[key] = value
-    return result
 
 
 class Provider(StrEnum):
@@ -195,24 +192,14 @@ class Declaration:
             )
 
     @classmethod
-    def parse(cls, text: str | bytes) -> Declaration:
+    def parse(cls, entries: object) -> Declaration:
+        """The credentials a `credentials` section lists."""
         try:
-            data = json.loads(text, object_pairs_hook=_object)
-            if not isinstance(data, dict) or set(data) != {
-                "schema_version",
-                "credentials",
-            }:
-                raise ValueError
-            if type(data["schema_version"]) is not int or data["schema_version"] != 1:
-                raise ValueError
-            entries = data["credentials"]
             if not isinstance(entries, list) or len(entries) > 32:
                 raise ValueError
             credentials = tuple(_parse_credential(entry) for entry in entries)
         except (ValueError, TypeError, KeyError) as error:
-            raise CredentialError(
-                f"credentials-invalid: check {DECLARATION}"
-            ) from error
+            raise CredentialError(f"credentials-invalid: check {WHERE}") from error
         return cls(credentials)
 
     def named(self, name: str) -> Credential:
@@ -301,7 +288,22 @@ def _parse_credential(entry: object) -> Credential:
     )
 
 
+def declared(text: str | bytes) -> Declaration | None:
+    """The credentials a configuration document declares; None without that section."""
+    try:
+        declared_sections = sections(text)
+    except ConfigurationError as error:
+        raise CredentialError(f"credentials-invalid: {error}") from error
+    if Section.CREDENTIALS not in declared_sections:
+        return None
+    return Declaration.parse(declared_sections[Section.CREDENTIALS])
+
+
 def committed(cwd: Path, environment: Mapping[str, str]) -> Declaration | None:
+    """The credentials committed at HEAD, else at the fetched `origin/HEAD`.
+
+    A revision whose configuration has no credentials section leaves them to the next.
+    """
     safe = machine_environment(environment)
     if git(["rev-parse", "--git-dir"], cwd, safe).returncode:
         return None
@@ -315,27 +317,8 @@ def committed(cwd: Path, environment: Mapping[str, str]) -> Declaration | None:
 def _at_revision(
     cwd: Path, environment: Mapping[str, str], revision: str
 ) -> Declaration | None:
-    result = git(
-        ["cat-file", "--batch"],
-        cwd,
-        environment,
-        f"{revision}:{DECLARATION}\n".encode(),
-    )
-    header, _, content = result.stdout.partition(b"\n")
-    if result.returncode or not header:
-        raise CredentialError(
-            f"credentials-invalid: cannot read committed {DECLARATION}"
-        )
-    if header.endswith(b" missing"):
-        return None
-    fields = header.split(b" ")
-    if (
-        len(fields) != 3
-        or fields[1] != b"blob"
-        or not fields[2].isdigit()
-        or int(fields[2]) > 128 * 1024
-    ):
-        raise CredentialError(
-            f"credentials-invalid: {DECLARATION} must be a small JSON file"
-        )
-    return Declaration.parse(content[: int(fields[2])])
+    try:
+        text = committed_configuration(cwd, environment, revision)
+    except ConfigurationError as error:
+        raise CredentialError(f"credentials-invalid: {error}") from error
+    return None if text is None else declared(text)

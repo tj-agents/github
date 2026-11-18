@@ -16,7 +16,7 @@ from gate_sandbox import (
     tool_directories,
 )
 
-APP = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+APP = {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
 URL = "https://github.com/sample-org/core/pull/5"
 ITEM = "github:github.com/sample-org/core:10"
 NOW = 1_800_000_000.0

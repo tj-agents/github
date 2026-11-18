@@ -1,7 +1,8 @@
 # Credential declarations
 
-The broker reads `.agents/credentials.json` at the current commit, falling back to the fetched remote
-default only when that file is absent. This declaration is public configuration; it contains no secret.
+The broker reads the `credentials` section of `.agents/repository.json` at the current commit, falling
+back to the fetched remote default only when that commit has no such section; the file's other sections,
+such as `access`, do not affect it. This declaration is public configuration; it contains no secret.
 The same provider, owner and login share one enrollment across repositories and worktrees.
 
 ```json

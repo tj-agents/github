@@ -2,22 +2,7 @@ locals {
   flag_rules = ["creation", "update", "deletion", "non_fast_forward", "required_linear_history", "required_signatures"]
   rule_types = concat(local.flag_rules, ["pull_request", "required_status_checks", "merge_queue"])
 
-  approval_rulesets = {
-    for repository, settings in try(var.declaration.repositories, {}) : "${repository}/merge-policy-review" => {
-      repository = repository
-      name       = "merge-policy-review"
-      types      = ["pull_request"]
-      ruleset = {
-        target      = "branch"
-        enforcement = "active"
-        conditions  = { ref_name = { include = ["~DEFAULT_BRANCH"], exclude = [] } }
-        bypass_actors = []
-        rules = [{ type = "pull_request", parameters = { required_approving_review_count = 1 } }]
-      }
-    } if try(settings.requires_approval, false)
-  }
-
-  rulesets = merge(local.approval_rulesets, [
+  declared_rulesets = merge({}, [
     for repository, settings in try(var.declaration.repositories, {}) : {
       for name, ruleset in try(settings.rulesets, {}) : "${repository}/${name}" => {
         repository = repository
@@ -27,6 +12,8 @@ locals {
       }
     }
   ]...)
+
+  rulesets = merge(local.merge_policy_rulesets, local.declared_rulesets)
 }
 
 resource "github_repository_ruleset" "this" {
@@ -105,6 +92,11 @@ resource "github_repository_ruleset" "this" {
     precondition {
       condition     = alltrue([for type in each.value.types : contains(local.rule_types, type)])
       error_message = "${each.key} uses a rule type this module does not converge; supported: ${join(", ", local.rule_types)}."
+    }
+
+    precondition {
+      condition     = !(contains(keys(local.merge_policy_rulesets), each.key) && contains(keys(local.declared_rulesets), each.key))
+      error_message = "${each.key} is generated from the repository's merge section; remove the declared ruleset of that name."
     }
   }
 }

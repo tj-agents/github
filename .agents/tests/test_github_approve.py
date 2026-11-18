@@ -21,8 +21,10 @@ from github_approve import (
 from github_gate import main as gate_main
 
 HEAD = "a" * 40
-APP = json.dumps({"schema_version": 1, "method": "app", "app": "sample-bot"})
-HUMAN = json.dumps({"schema_version": 1, "method": "human"})
+APP = json.dumps(
+    {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
+)
+HUMAN = json.dumps({"schema_version": 1, "access": {"method": "human"}})
 BOT = "app/sample-bot"
 AGENT = {
     "CLAUDECODE": "1",
@@ -223,8 +225,8 @@ def tools_with_work() -> FakeTools:
             STALE: details(STALE, reviews=[review("sample-human", oid="b" * 40)]),
         },
         files={
-            "repos/sample-org/core/contents/.agents/github-access.json?ref=main": APP,
-            "repos/sample-org/.github/contents/.agents/github-access.json": APP,
+            "repos/sample-org/core/contents/.agents/repository.json?ref=main": APP,
+            "repos/sample-org/.github/contents/.agents/repository.json": APP,
         },
     )
 
@@ -325,9 +327,9 @@ def test_each_item_pr_and_declaration_is_read_once() -> None:
         command[2] for command in tools.commands("gh", "api") if command[2] != "user"
     ]
     assert reads == [
-        "repos/sample-org/core/contents/.agents/github-access.json?ref=main",
-        "repos/sample-org/notes/contents/.agents/github-access.json?ref=main",
-        "repos/sample-org/.github/contents/.agents/github-access.json",
+        "repos/sample-org/core/contents/.agents/repository.json?ref=main",
+        "repos/sample-org/notes/contents/.agents/repository.json?ref=main",
+        "repos/sample-org/.github/contents/.agents/repository.json",
     ]
 
 
@@ -356,11 +358,11 @@ def test_only_open_prs_by_the_declared_app_awaiting_you_are_kept() -> None:
         item_prs={ref(10)["ref"]: [(address, "open") for address in pulls]},
         pulls=pulls,
         files={
-            "repos/sample-org/core/contents/.agents/github-access.json?ref=main": APP,
-            "repos/sample-org/sandbox/contents/.agents/github-access.json?ref=main": (
+            "repos/sample-org/core/contents/.agents/repository.json?ref=main": APP,
+            "repos/sample-org/sandbox/contents/.agents/repository.json?ref=main": (
                 HUMAN
             ),
-            "repos/sample-org/.github/contents/.agents/github-access.json": APP,
+            "repos/sample-org/.github/contents/.agents/repository.json": APP,
         },
     )
     run_approval(tools)
