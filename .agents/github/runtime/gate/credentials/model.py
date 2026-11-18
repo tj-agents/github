@@ -46,6 +46,7 @@ class Client(StrEnum):
 class Tool(StrEnum):
     DOTNET = "dotnet"
     NPM = "npm"
+    PNPM = "pnpm"
     DOCKER = "docker"
     AZURE_CLI = "az"
 
@@ -75,9 +76,18 @@ class Endpoint:
     url: str
     probe: str | None = None
     scope: str | None = None
+    variable: str | None = None
 
     def __post_init__(self) -> None:
         parsed = plain_url(self.url)
+        if self.variable is not None and (
+            self.client not in {Client.NUGET, Client.NPM}
+            or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", self.variable)
+        ):
+            raise CredentialError(
+                "credentials-invalid: declare an upper-case variable "
+                "only for nuget or npm endpoints"
+            )
         if self.scope is not None and not re.fullmatch(
             r"@[a-z0-9][a-z0-9-]{0,99}", self.scope
         ):
@@ -190,6 +200,17 @@ class Declaration:
             raise CredentialError(
                 "credentials-invalid: two credentials claim the same endpoint"
             )
+        variables: dict[str, str] = {}
+        for credential in self.credentials:
+            for endpoint in credential.endpoints:
+                if (
+                    endpoint.variable is not None
+                    and variables.setdefault(endpoint.variable, credential.key)
+                    != credential.key
+                ):
+                    raise CredentialError(
+                        "credentials-invalid: two credentials claim the same variable"
+                    )
 
     @classmethod
     def parse(cls, entries: object) -> Declaration:
@@ -253,12 +274,13 @@ def _parse_credential(entry: object) -> Credential:
     for item in endpoints_data:
         if (
             not isinstance(item, dict)
-            or set(item) - {"client", "url", "probe", "scope"}
+            or set(item) - {"client", "url", "probe", "scope", "variable"}
             or not {"client", "url"} <= set(item)
         ):
             raise ValueError("endpoint fields")
         if not all(
-            isinstance(value, str) or (key in {"probe", "scope"} and value is None)
+            isinstance(value, str)
+            or (key in {"probe", "scope", "variable"} and value is None)
             for key, value in item.items()
         ):
             raise ValueError("endpoint values")
@@ -268,6 +290,7 @@ def _parse_credential(entry: object) -> Credential:
                 item["url"],
                 item.get("probe"),
                 item.get("scope"),
+                item.get("variable"),
             )
         )
     permissions = entry.get("permissions", {})

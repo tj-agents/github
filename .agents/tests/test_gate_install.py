@@ -245,6 +245,7 @@ def test_setup_writes_only_the_gate_runtime_its_gh_and_the_global_config(
                 "nuget-plugin-tj-credentials",
                 "dotnet",
                 "npm",
+                "pnpm",
                 "docker",
                 "az",
             )
