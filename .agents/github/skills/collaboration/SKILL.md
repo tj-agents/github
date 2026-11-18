@@ -1,7 +1,7 @@
 ---
 name: collaboration
 description: Read compact GitHub issue or PR context, post conversation comments, submit inline review batches and reply to review threads. Use when interacting with an issue, pull request or review discussion on GitHub.
-kind: utility
+kind: operation
 domain: github
 profile: core
 applicability: explicitly selected GitHub collaboration tasks
