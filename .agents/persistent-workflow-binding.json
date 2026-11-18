@@ -1,0 +1,31 @@
+{
+  "authorization_resolution": {
+    "standing": "absent",
+    "stopped_by": {
+      "class": "no-recorded-authorization"
+    }
+  },
+  "auto_merge": false,
+  "bound_at": "2026-11-03T01:12:10.434898+00:00",
+  "branch": "Feature/SharedWorkItems",
+  "changed_path_count": 115,
+  "completion_condition": "the bound PR reaches MERGED, or a recorded terminal ends this delivery",
+  "head": "cac5d8647df696db3485180acc42b3c03d5024ae",
+  "merge_authorization": {
+    "instruction": null,
+    "mode": "absent"
+  },
+  "pending_evidence": [],
+  "pr": 13,
+  "pr_url": "https://github.com/tj-agents/github/pull/13",
+  "repo": "tj-agents/github",
+  "review": {
+    "reviewed_sha": null,
+    "work_order": "C:\\Users\\TommySeery\\source\\repos\\tj-agents\\github\\.git\\agent-workflow\\reviews\\d3ac32a18f0c3b85df367fdb1a884dbc95270608e0d06fa12fd9e0d06ad43620\\work-order.md",
+    "work_order_order": [
+      "full"
+    ]
+  },
+  "schema_version": 1,
+  "worktree": "C:\\Users\\TommySeery\\source\\repos\\tj-agents\\github.worktrees\\Feature-SharedWorkItems"
+}
