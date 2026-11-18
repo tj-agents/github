@@ -4,6 +4,9 @@
       "github"
     ]
   },
+  "dependencies": {
+    "github": ["tj-agents/base"]
+  },
   "resources": [
     {
       "plugin": "github",
