@@ -10,5 +10,8 @@
   "mcpServers": "./.mcp.json",
   "keywords": [
     "github"
+  ],
+  "dependencies": [
+    "base@tj-agents"
   ]
 }
