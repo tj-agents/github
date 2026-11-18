@@ -20,7 +20,10 @@
     "python@tj-agents": true,
     "skill@tj-agents": true,
     "template@tj-agents": true,
-    "workflow@tj-agents": true
+    "workflow@tj-agents": true,
+    "agent@tj-agents": true,
+    "cli@tj-agents": true,
+    "skill@tj-agents": true
   },
   "permissions": {
     "allow": [],
