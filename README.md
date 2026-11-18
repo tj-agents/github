@@ -19,7 +19,8 @@ Use `python3` on Linux. Both hosts receive the same generated skill and shipped 
 
 For repository-declared Git/gh/MCP, package registry and Azure DevOps credentials, use
 [GitHub access](.agents/github/utility/access/SKILL.md). It supplies browser onboarding, OS-vault storage,
-rotation, expiry checks and native client routing from a committed declaration shared by linked worktrees.
+rotation, expiry checks and native client routing from a committed declaration, or from the credential
+profile of a locally selected employer plugin, shared by linked worktrees.
 
 This package owns GitHub interaction mechanics. Core owns engineering review and delivery;
 work-items owns record semantics; github-actions owns CI workflow standards and generators.
@@ -219,7 +220,7 @@ are host permission rules, not an OS boundary around your account.
 - The shim and helper run the Python that ran setup. After removing that Python, rerun
   `tj install`.
 - [Declared credentials](.agents/github/utility/access/SKILL.md) use the `credentials` section of
-  `.agents/repository.json`.
+  `.agents/repository.json`, else the `credentials.json` profile of a locally selected plugin.
   The App declaration remains the source of agent Git/gh App selection; package clients use their
   explicitly declared credential type.
 

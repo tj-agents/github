@@ -440,3 +440,105 @@ def test_nuget_returns_credentials_only_for_a_declared_source(
     assert accepted["Password"] == TOKEN.value
     assert refused["ResponseCode"] == "NotFound"
     assert refused["Password"] is None
+
+
+def select_plugin_profile(
+    sandbox: Sandbox, root: Path, credential: Credential, scope: str = "local"
+) -> dict[str, str]:
+    """Select `employer@tj-agents` locally and install its credential profile."""
+    (root / ".agents").mkdir(exist_ok=True)
+    (root / ".agents/plugins.json").write_text(
+        json.dumps({"schema_version": 1, "plugins": ["employer@tj-agents"]}),
+        encoding="utf-8",
+    )
+    payload = sandbox.root / "claude/plugins/cache/tj-agents/employer/1"
+    payload.mkdir(parents=True)
+    (payload / "credentials.json").write_text(document(credential), encoding="utf-8")
+    entry = {"scope": scope, "installPath": str(payload)}
+    if scope != "user":
+        entry["projectPath"] = str(root)
+    (sandbox.root / "claude/plugins/installed_plugins.json").write_text(
+        json.dumps({"version": 2, "plugins": {"employer@tj-agents": [entry]}}),
+        encoding="utf-8",
+    )
+    return sandbox.environment(CLAUDE_CONFIG_DIR=str(sandbox.root / "claude"))
+
+
+def load(cwd: Path, environment: Mapping[str, str]) -> Declaration | None:
+    return context.Context.load(
+        cwd, environment, cwd / "state", windows=False
+    ).declaration
+
+
+@pytest.mark.parametrize("scope", ["local", "user"])
+def test_a_locally_selected_plugin_profile_serves_the_repository_and_its_worktrees(
+    sandbox: Sandbox, credential: Credential, scope: str
+) -> None:
+    root = sandbox.repository("employer")
+    environment = select_plugin_profile(sandbox, root, credential, scope)
+    linked = sandbox.root / "employer-linked"
+    sandbox.git(root, "worktree", "add", "-q", "-b", "topic", str(linked))
+    assert load(root, environment) == Declaration((credential,))
+    assert load(linked, environment) == Declaration((credential,))
+
+
+def test_a_committed_declaration_takes_precedence_over_a_plugin_profile(
+    sandbox: Sandbox, credential: Credential
+) -> None:
+    root = sandbox.repository("owned", {"schema_version": 1, "credentials": []})
+    environment = select_plugin_profile(sandbox, root, credential)
+    assert load(root, environment) == Declaration(())
+
+
+def test_a_profile_applies_only_to_repositories_that_select_its_plugin(
+    sandbox: Sandbox, credential: Credential
+) -> None:
+    root = sandbox.repository("employer")
+    environment = select_plugin_profile(sandbox, root, credential)
+    other = sandbox.repository("unselected")
+    assert load(other, environment) is None
+    (root / ".agents/plugins.json").write_text(
+        json.dumps({"schema_version": 1, "plugins": ["other@tj-agents"]}),
+        encoding="utf-8",
+    )
+    assert load(root, environment) is None
+
+
+@pytest.mark.parametrize(
+    ("client", "variable"),
+    [(Client.GIT, "GITHUB_NUGET_PASSWORD"), (Client.NUGET, "lower_case")],
+)
+def test_placeholder_variables_are_upper_case_and_only_for_package_clients(
+    client: Client, variable: str
+) -> None:
+    with pytest.raises(CredentialError, match="variable"):
+        Endpoint(
+            client,
+            "https://nuget.pkg.github.com/Example/index.json",
+            None,
+            None,
+            variable,
+        )
+
+
+def test_two_credentials_cannot_claim_one_placeholder_variable(
+    credential: Credential,
+) -> None:
+    first = dataclasses.replace(
+        credential,
+        endpoints=(dataclasses.replace(credential.endpoints[0], variable="FEED"),),
+    )
+    second = dataclasses.replace(
+        first,
+        login="other-user",
+        endpoints=(
+            Endpoint(
+                Client.NUGET,
+                "https://nuget.pkg.github.com/Other/index.json",
+                variable="FEED",
+            ),
+        ),
+        name="other",
+    )
+    with pytest.raises(CredentialError, match="same variable"):
+        Declaration((first, second))

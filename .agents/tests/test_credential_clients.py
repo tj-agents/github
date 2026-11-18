@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Never
 
 import pytest
-from credentials import azure_cli, children, docker, git, npm, providers
+from credentials import azure_cli, children, docker, dotnet, git, npm, providers
 from credentials.context import Context
 from credentials.http import Response
 from credentials.model import (
@@ -506,3 +506,38 @@ def test_git_declared_target_receives_an_ephemeral_credential_without_a_password
     )
     assert "password" not in fields
     assert NPM_SECRET.value not in response
+
+
+def test_package_clients_supply_the_repository_placeholder_only_to_the_child(
+    client_context: Context, child_calls: list[ChildCall]
+) -> None:
+    assert client_context.declaration is not None
+    work = client_context.declaration.named("work")
+    placeholder = with_placeholder(work)
+    current = replace(
+        client_context,
+        declaration=Declaration((placeholder,)),
+        environment={**client_context.environment, "GITHUB_NUGET_PASSWORD": "stale"},
+    )
+    assert dotnet.run(current, current.cwd / "dotnet", ("restore",), NOW) == 29
+    assert npm.run(current, current.cwd / "pnpm", ("install",), NOW) == 29
+    for call in child_calls:
+        assert call.environment["GITHUB_NUGET_PASSWORD"] == NPM_SECRET.value
+    assert current.environment["GITHUB_NUGET_PASSWORD"] == "stale"
+
+
+def with_placeholder(credential: Credential) -> Credential:
+    npm_endpoint, git_endpoint = credential.endpoints
+    return replace(
+        credential,
+        endpoints=(
+            replace(npm_endpoint, variable="GITHUB_NUGET_PASSWORD"),
+            Endpoint(
+                Client.NUGET,
+                "https://nuget.pkg.github.com/Example/index.json",
+                "https://nuget.pkg.github.com/Example/download/sample/index.json",
+                variable="GITHUB_NUGET_PASSWORD",
+            ),
+            git_endpoint,
+        ),
+    )
