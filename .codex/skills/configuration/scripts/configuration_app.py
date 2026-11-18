@@ -17,6 +17,7 @@ HUMAN_TIMEOUT_MS = 30 * 60 * 1000
 HCP = "https://app.terraform.io/api/v2"
 PERMISSIONS = {
     "administration": "write",
+    "contents": "read",
     "environments": "write",
     "secrets": "write",
     "actions_variables": "write",

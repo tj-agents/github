@@ -1,8 +1,9 @@
-"""Which access applies to an agent: the repository's own declaration, else its owner's.
+"""Which access applies to an agent: the repository's own section, else its owner's.
 
-1. The declaration committed at the repository's HEAD.
-2. The owner's default: the same file on the default branch of `<owner>/.github`,
-   read from GitHub and cached briefly. The owner is the `origin` remote's account.
+1. The `access` section of `.agents/repository.json` committed at the repository's HEAD.
+2. The owner's default: that section of the same file on the default branch of
+   `<owner>/.github`, read from GitHub and cached briefly. The owner is the `origin`
+   remote's account.
 3. Otherwise `human`.
 
 Only agents resolve access; humans never reach this module.
@@ -18,15 +19,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from gate_app import Apps, Fetch, GitHubError
-from gate_declaration import DECLARATION, Access, HumanAccess, committed, parse
+from gate_declaration import Access, HumanAccess, committed, parse
 from gate_error import GateError
 from gate_owner import origin_owner
 from gate_platform import Platform, PrivateStateError
 from gate_private import read_private, write_private
+from repository_configuration import CONFIGURATION
 
 OWNER_REPOSITORY = ".github"
 CACHE_SECONDS = 600
-MAX_DECLARATION_BYTES = 64 * 1024
+MAX_CONFIGURATION_BYTES = 64 * 1024
 
 
 class OwnerDefaultError(GateError):
@@ -35,7 +37,7 @@ class OwnerDefaultError(GateError):
 
 @dataclass(frozen=True, slots=True)
 class Fetched:
-    """An owner's default declaration as GitHub returned it; None when it has none."""
+    """An owner's default configuration as GitHub returned it; None when it has none."""
 
     text: str | None
 
@@ -75,12 +77,13 @@ class Declarations:
         if fetched.text is None:
             return HumanAccess()
         try:
-            return parse(fetched.text)
+            declared = parse(fetched.text)
         except GateError as error:
             raise OwnerDefaultError(
                 f"{owner}/{OWNER_REPOSITORY}: {error}; agents in {owner} repositories "
-                "stop until it is fixed or the repository commits its own declaration"
+                "stop until it is fixed or the repository commits its own access"
             ) from error
+        return HumanAccess() if declared is None else declared
 
     def cache_path(self, owner: str) -> Path:
         return self.cache / f"{owner.lower()}.json"
@@ -114,7 +117,7 @@ class Declarations:
         return None
 
     def read(self, owner: str, token: str) -> Fetched:
-        path = f"/repos/{owner}/{OWNER_REPOSITORY}/contents/{DECLARATION}"
+        path = f"/repos/{owner}/{OWNER_REPOSITORY}/contents/{CONFIGURATION}"
         try:
             response = self.fetch(path, token, "GET")
         except GitHubError as error:
@@ -124,7 +127,7 @@ class Declarations:
                 f"cannot read {owner}'s default access from {owner}/{OWNER_REPOSITORY} "
                 f"({error}); agents in {owner} repositories stop until it can be read"
             ) from error
-        where = f"{owner}/{OWNER_REPOSITORY}/{DECLARATION}"
+        where = f"{owner}/{OWNER_REPOSITORY}/{CONFIGURATION}"
         return Fetched(decoded(response, where))
 
 
@@ -141,8 +144,8 @@ def decoded(response: object, where: str) -> str:
         content = base64.b64decode(response["content"])
     except (binascii.Error, ValueError) as error:
         raise OwnerDefaultError(f"GitHub returned unreadable {where}") from error
-    if len(content) > MAX_DECLARATION_BYTES:
-        raise OwnerDefaultError(f"{where} is too large to be a declaration")
+    if len(content) > MAX_CONFIGURATION_BYTES:
+        raise OwnerDefaultError(f"{where} is too large to be a configuration")
     try:
         return content.decode("utf-8")
     except UnicodeDecodeError as error:

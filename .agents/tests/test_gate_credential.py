@@ -8,7 +8,7 @@ import pytest
 from gate_sandbox import AGENT_MARKERS, CACHED_TOKEN, Sandbox
 from github_gate import main
 
-APP = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+APP = {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
 GITHUB = "protocol=https\nhost=github.com\n"
 TRANSPORT = "capability[]=authtype\ncapability[]=state\n" + GITHUB
 BOT = base64.b64encode(f"x-access-token:{CACHED_TOKEN}".encode()).decode()
@@ -134,8 +134,8 @@ def test_linked_worktrees_read_their_own_committed_declaration(
     sandbox.git(machine.declared, "branch", "feature")
     opted_out = sandbox.root / "opted-out"
     sandbox.git(machine.declared, "worktree", "add", "-q", "-b", "out", str(opted_out))
-    human = {"schema_version": 1, "method": "human"}
-    (opted_out / ".agents/github-access.json").write_text(
+    human = {"schema_version": 1, "access": {"method": "human"}}
+    (opted_out / ".agents/repository.json").write_text(
         json.dumps(human), encoding="utf-8"
     )
     sandbox.git(opted_out, "commit", "-q", "-am", "opt out")
