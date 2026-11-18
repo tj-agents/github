@@ -1,6 +1,8 @@
 {
   "plugin": "github",
-  "dependencies": [],
+  "dependencies": [
+    "tj-agents/base"
+  ],
   "profiles": {
     "core": [
       "access",
