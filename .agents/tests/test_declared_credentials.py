@@ -23,6 +23,7 @@ from credentials.model import (
     Endpoint,
     Provider,
     committed,
+    declared,
 )
 from credentials.service import Service
 from credentials.vault import Secret, State
@@ -146,7 +147,8 @@ def service(
 
 
 def test_declaration_roundtrips_declared_endpoints(credential: Credential) -> None:
-    result = Declaration.parse(document(credential))
+    result = declared(document(credential))
+    assert result is not None
     providers.validate(result)
     assert result.named("work") == credential
 
@@ -159,15 +161,25 @@ def test_declaration_roundtrips_declared_endpoints(credential: Credential) -> No
         '{"schema_version":true,"credentials":[]}',
         '{"schema_version":1,"schema_version":1,"credentials":[]}',
         '{"schema_version":1,"credentials":[],"token":"secret"}',
+        '{"schema_version":1,"credentials":{}}',
+        '{"schema_version":1,"credentials":null}',
+        '{"schema_version":1,"credentials":[{"name":"a","name":"b"}]}',
     ],
 )
 def test_declaration_rejects_ambiguous_or_unsupported_documents(text: str) -> None:
     with pytest.raises(CredentialError, match="credentials-invalid"):
-        Declaration.parse(text)
+        declared(text)
 
 
 def test_declaration_accepts_an_explicit_opt_out() -> None:
-    assert Declaration.parse('{"schema_version":1,"credentials":[]}').credentials == ()
+    opted_out = declared('{"schema_version":1,"credentials":[]}')
+    assert opted_out is not None
+    assert opted_out.credentials == ()
+
+
+def test_a_configuration_without_credentials_declares_none() -> None:
+    text = '{"schema_version":1,"access":{"method":"app","app":"sample-bot"}}'
+    assert declared(text) is None
 
 
 @pytest.mark.parametrize(
@@ -341,14 +353,20 @@ def test_expired_credentials_fail_before_network_or_client_start(
     assert transport.urls == []
 
 
+@pytest.mark.parametrize(
+    "branch_configuration",
+    [None, {"schema_version": 1, "access": {"method": "human"}}],
+)
 def test_worktrees_inherit_the_fetched_default_declaration(
-    sandbox: Sandbox, credential: Credential
+    sandbox: Sandbox,
+    credential: Credential,
+    branch_configuration: dict[str, object] | None,
 ) -> None:
     root = sandbox.repository("credential-inheritance")
-    selection = root / ".agents/credentials.json"
+    selection = root / ".agents/repository.json"
     selection.parent.mkdir()
     selection.write_text(document(credential), encoding="utf-8")
-    sandbox.git(root, "add", ".agents/credentials.json")
+    sandbox.git(root, "add", ".agents/repository.json")
     sandbox.git(root, "commit", "-qm", "declare credentials")
     sandbox.git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
     sandbox.git(
@@ -356,6 +374,9 @@ def test_worktrees_inherit_the_fetched_default_declaration(
     )
     sandbox.git(root, "checkout", "-q", "--orphan", "older-branch")
     sandbox.git(root, "rm", "-q", "-r", "--cached", ".")
+    if branch_configuration is not None:
+        selection.write_text(json.dumps(branch_configuration), encoding="utf-8")
+        sandbox.git(root, "add", ".agents/repository.json")
     sandbox.git(root, "commit", "-q", "--allow-empty", "-m", "older branch")
     assert committed(root, sandbox.environment()) == Declaration((credential,))
 

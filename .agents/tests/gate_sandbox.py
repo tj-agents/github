@@ -43,7 +43,7 @@ INSTALLATION_ID = 7
 FAR_FUTURE = 4_102_444_800
 NOW = 1_800_000_000.0
 CACHED_TOKEN = "ghs_" + "c" * 36
-OWNER_DEFAULT = "/.github/contents/.agents/github-access.json"
+OWNER_DEFAULT = "/.github/contents/.agents/repository.json"
 
 
 def tool_directories() -> list[str]:
@@ -118,16 +118,16 @@ class Sandbox:
     def repository(
         self,
         name: str,
-        declaration: Mapping[str, object] | None = None,
+        configuration: Mapping[str, object] | None = None,
         origin: str | None = f"https://github.com/{COVERED}/core.git",
     ) -> Path:
         path = self.root / name
         self.git(self.root, "init", "-q", "-b", "main", str(path))
-        if declaration is not None:
-            target = path / ".agents/github-access.json"
+        if configuration is not None:
+            target = path / ".agents/repository.json"
             target.parent.mkdir(parents=True)
-            target.write_text(json.dumps(declaration), encoding="utf-8")
-            self.git(path, "add", ".agents/github-access.json")
+            target.write_text(json.dumps(configuration), encoding="utf-8")
+            self.git(path, "add", ".agents/repository.json")
         self.git(path, "commit", "-q", "--allow-empty", "-m", "initial")
         if origin is not None:
             self.git(path, "remote", "add", "origin", origin)
@@ -163,7 +163,7 @@ class Sandbox:
 class FakeGitHub:
     """GitHub's App endpoints for one App installed on `installed` accounts.
 
-    `owner_defaults` holds each owner's `.github/.agents/github-access.json`; an owner
+    `owner_defaults` holds each owner's `.github/.agents/repository.json`; an owner
     without one answers 404, and `owner_failure` makes every such read fail with it.
     """
 
