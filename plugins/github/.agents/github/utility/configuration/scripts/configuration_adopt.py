@@ -137,21 +137,15 @@ def _write_imports(root: Path, owner_rulesets: dict[str, int]) -> None:
     (root / "imports.tf").write_text("\n".join(blocks), encoding="utf-8")
 
 
-def generated(document: dict[str, Any], key: str) -> bool:
-    repository, name = key.split("/", 1)
-    return bool(
-        document.get("repositories", {})
-        .get(repository, {})
-        .get("requires_approval", False)
-        and name == configuration_declaration.APPROVAL_RULESET
-    )
+def generated(key: str) -> bool:
+    return key.split("/", 1)[1] == configuration_declaration.APPROVAL_RULESET
 
 
 def adopt(declaration_path: Path) -> list[str]:
     root = declaration_path.resolve().parent
     document = json.loads(declaration_path.read_text(encoding="utf-8"))
     rulesets = live_rulesets(document["owner"])
-    declared = [key for key in rulesets if not generated(document, key)]
+    declared = [key for key in rulesets if not generated(key)]
     repositories = document.setdefault("repositories", {})
     stub = {
         "target": "branch",
@@ -175,7 +169,7 @@ def adopt(declaration_path: Path) -> list[str]:
         if (
             found
             and change["change"].get("importing")
-            and not generated(document, found.group(1))
+            and not generated(found.group(1))
         ):
             repository, name = found.group(1).split("/", 1)
             repositories[repository]["rulesets"][name] = native(

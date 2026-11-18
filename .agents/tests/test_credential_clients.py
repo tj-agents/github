@@ -413,15 +413,10 @@ def test_git_declared_routing_stops_helper_fallback_for_undeclared_targets(
     path: str,
 ) -> None:
     assert unopened_context.declaration is not None
+    configuration = json.loads(document(unopened_context.declaration.named("work")))
     repository = sandbox.repository(
-        "credential-clients", {"schema_version": 1, "method": "human"}
+        "credential-clients", {**configuration, "access": {"method": "human"}}
     )
-    target = repository / ".agents/credentials.json"
-    target.write_text(
-        document(unopened_context.declaration.named("work")), encoding="utf-8"
-    )
-    sandbox.git(repository, "add", ".agents/credentials.json")
-    sandbox.git(repository, "commit", "-qm", "declare fixture credentials")
     response = answer(
         "get",
         CredentialRequest("https", "github.com", path, frozenset({"authtype"})),

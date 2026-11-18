@@ -31,7 +31,7 @@ GITHUB = "https://github.com"
 BLOCK_BEGIN = "# >>> github@tj-agents access gate (written by setup; do not edit) >>>"
 BLOCK_END = "# <<< github@tj-agents access gate <<<"
 BLOCK_NOTE = (
-    "# Agents in repositories that commit .agents/github-access.json reach\n"
+    "# Agents whose .agents/repository.json access selects an App reach\n"
     "# GitHub through the gate; everyone else falls through to the github.com\n"
     "# helpers below, copied from earlier configuration; setup --check reports\n"
     "# when they change.\n"

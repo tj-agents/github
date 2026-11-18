@@ -21,7 +21,7 @@ from gate_sandbox import (
 )
 from github_gate import main
 
-APP = {"schema_version": 1, "method": "app", "app": "sample-bot"}
+APP = {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}}
 KEY = b"-----BEGIN PRIVATE KEY-----\nsample\n-----END PRIVATE KEY-----\n"
 
 
@@ -61,7 +61,7 @@ def test_a_human_reaches_the_real_gh_with_the_inherited_environment(
 
 
 @pytest.mark.parametrize(
-    "declaration", [None, {"schema_version": 1, "method": "human"}]
+    "declaration", [None, {"schema_version": 1, "access": {"method": "human"}}]
 )
 def test_an_agent_outside_app_repositories_reaches_the_real_gh_untouched(
     sandbox: Sandbox,

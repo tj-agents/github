@@ -213,7 +213,8 @@ def test_check_requires_the_app_a_repository_declares_to_be_enrolled(
 ) -> None:
     assert main(["setup"]) == 0
     repository = sandbox.repository(
-        "declared", {"schema_version": 1, "method": "app", "app": "sample-bot"}
+        "declared",
+        {"schema_version": 1, "access": {"method": "app", "app": "sample-bot"}},
     )
     monkeypatch.chdir(repository)
     capsys.readouterr()
