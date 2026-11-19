@@ -49,7 +49,7 @@ was pushed and fetched origin/main matched the complete expected SHA.
 Local implementation is complete. Windows validation passed: 46 deterministic fixtures, ruff
 format/check, strict mypy (four source files), Template conformance, generation freshness,
 plugin-adoption check and personal-policy check. A read-only real gh smoke test fetched Core
-PR #335 at fef9cf9656a70158a1f46550e9642c0f8e9ca523 through the source, generated Claude and
+PR #335 at 38dce3014b9db151076892197d656e6013c8eef3 through the source, generated Claude and
 generated Codex script paths; all returned the same head and 13 changed files. The Windows
 PowerShell generator wrapper passed. No live comment or review was posted.
 
