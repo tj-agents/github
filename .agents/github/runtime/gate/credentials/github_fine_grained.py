@@ -33,6 +33,16 @@ def creation_url(credential: Credential) -> str:
 
 
 def instructions(credential: Credential) -> str:
+    target = credential.actions_secret
+    if target is not None:
+        repos = ", ".join(endpoint.url for endpoint in credential.endpoints)
+        return (
+            f"Sign in as {credential.login}. Select resource owner {credential.owner}, "
+            f"Only select repositories: {repos}, and Contents: Read-only. "
+            "Leave other permissions disabled. Complete any required approval. "
+            f"Submitting authorizes publication to {target.repository} Actions secret "
+            f"{target.name}."
+        )
     return (
         f"Create a fine-grained token as {credential.login}, select "
         f"resource owner {credential.owner} and the declared repositories "

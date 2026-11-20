@@ -1,6 +1,6 @@
 ---
 name: access
-description: Enroll, rotate and diagnose repository-declared GitHub and Azure DevOps credentials, including Git, gh, MCP and private package feeds. Use when a declared credential is missing, expiring or refused, or when adopting credential tooling.
+description: Enroll, rotate and diagnose repository-declared GitHub and Azure DevOps credentials, including private source reads in GitHub Actions, Git, gh, MCP and package feeds. Use for missing, expiring or refused credentials and credential adoption.
 kind: utility
 domain: github
 profile: core
@@ -59,3 +59,13 @@ repository's own NuGet or npm configuration reads. See the declaration contract 
 After enrollment, rerun the original operation. Source tests or a received token alone do not establish
 installed readiness. Verify the selected native consumers on Windows/Linux, including an inherited linked
 worktree; report any unavailable entry point with its resolver and observable acceptance condition.
+
+When an Actions job cannot fetch a private source, use the workflow's secret name to find its
+`actions_secret` declaration, then run `tj-credentials check --name <credential-name>` from the
+destination repository. If absent, add the nonsecret declaration using the
+[declaration contract](references/declarations.md#private-source-reads-in-github-actions).
+When a failed workflow needs a credential, give the owner the displayed onboarding or publication
+command. On Windows, prepare the owner shortcut using the declaration contract's
+[desktop handoff](references/declarations.md#windows-owner-handoff). It uses the existing guarded
+browser form and the owner's GitHub CLI sign-in. After the publication receipt, rerun the failed workflow and verify its private
+fetch. Leave agent Git and gh on their selected identity throughout.

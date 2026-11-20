@@ -120,6 +120,22 @@ class Endpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class ActionsSecret:
+    repository: str
+    name: str
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+", self.repository) or (
+            self.repository.split("/")[1] in {".", ".."}
+        ):
+            raise CredentialError("credentials-invalid: declare the Actions repository")
+        if not re.fullmatch(
+            r"[A-Z_][A-Z0-9_]{0,99}", self.name
+        ) or self.name.startswith("GITHUB_"):
+            raise CredentialError("credentials-invalid: invalid Actions secret name")
+
+
+@dataclass(frozen=True, slots=True)
 class Credential:
     name: str
     provider: Provider
@@ -129,6 +145,7 @@ class Credential:
     endpoints: tuple[Endpoint, ...]
     expires_in: int = 30
     permissions: tuple[tuple[str, str], ...] = ()
+    actions_secret: ActionsSecret | None = None
 
     def __post_init__(self) -> None:
         if not NAME.fullmatch(self.name) or not OWNER.fullmatch(self.owner):
@@ -137,6 +154,8 @@ class Credential:
             )
         if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,200}", self.login):
             raise CredentialError("credentials-invalid: invalid account login")
+        if self.actions_secret is not None:
+            self.validate_actions_secret(self.actions_secret)
         if type(self.expires_in) is not int or not 1 <= self.expires_in <= 90:
             raise CredentialError(
                 "credentials-invalid: expires_in must be 1 to 90 days"
@@ -164,17 +183,50 @@ class Credential:
     @property
     def key(self) -> str:
         identity = f"{self.provider}/{self.owner}/{self.login}".casefold()
+        if self.actions_secret is not None:
+            target = self.actions_secret
+            identity += f"/actions/{target.repository}/{target.name}".casefold()
         return hashlib.sha256(identity.encode()).hexdigest()
+
+    def validate_actions_secret(self, target: ActionsSecret) -> None:
+        if (
+            self.provider != Provider.GITHUB_FINE_GRAINED
+            or self.scopes
+            or self.permissions != (("contents", "read"),)
+            or target.repository.split("/")[0].casefold() != self.owner.casefold()
+        ):
+            raise CredentialError(
+                "credentials-invalid: Actions secrets require a same-owner destination "
+                "and a fine-grained token with only Contents read"
+            )
+        for endpoint in self.endpoints:
+            if (
+                endpoint.client != Client.GIT
+                or endpoint.probe is not None
+                or not re.fullmatch(
+                    rf"https://github\.com/{re.escape(self.owner)}/[A-Za-z0-9_.-]+",
+                    endpoint.url,
+                    re.IGNORECASE,
+                )
+                or endpoint.url.endswith(".git")
+            ):
+                raise CredentialError(
+                    "credentials-invalid: name each source by its GitHub repository URL"
+                )
 
     @property
     def action(self) -> str:
         return f"tj-credentials onboard --name {self.name}"
 
     def supports(self, client: Client) -> bool:
-        return any(endpoint.client == client for endpoint in self.endpoints)
+        return self.actions_secret is None and any(
+            endpoint.client == client for endpoint in self.endpoints
+        )
 
     def matches(self, client: Client, url: str) -> bool:
-        return any(endpoint.matches(client, url) for endpoint in self.endpoints)
+        return self.actions_secret is None and any(
+            endpoint.matches(client, url) for endpoint in self.endpoints
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +243,17 @@ class Declaration:
                 "credentials-invalid: declare distinct credential names"
             )
         routes: list[tuple[Client, str, str | None]] = []
+        destinations: set[tuple[str, str]] = set()
         for credential in self.credentials:
+            target = credential.actions_secret
+            if target is not None:
+                key = target.repository.casefold(), target.name
+                if key in destinations:
+                    raise CredentialError(
+                        "credentials-invalid: duplicate Actions secret"
+                    )
+                destinations.add(key)
+                continue
             routes.extend(
                 (endpoint.client, endpoint.url.casefold(), endpoint.scope)
                 for endpoint in credential.endpoints
@@ -255,7 +317,7 @@ def _parse_credential(entry: object) -> Credential:
     if (
         not isinstance(entry, dict)
         or not required <= set(entry)
-        or set(entry) - required - {"permissions"}
+        or set(entry) - required - {"permissions", "actions_secret"}
     ):
         raise ValueError("credential fields")
     if not all(
@@ -299,6 +361,13 @@ def _parse_credential(entry: object) -> Credential:
         for key, value in permissions.items()
     ):
         raise ValueError("credential permissions")
+    target = entry.get("actions_secret")
+    if target is not None and (
+        not isinstance(target, dict)
+        or set(target) != {"repository", "name"}
+        or not all(isinstance(value, str) for value in target.values())
+    ):
+        raise ValueError("Actions secret destination")
     return Credential(
         entry["name"],
         Provider(entry["provider"]),
@@ -308,6 +377,7 @@ def _parse_credential(entry: object) -> Credential:
         tuple(endpoints),
         entry["expires_in"],
         tuple(permissions.items()),
+        ActionsSecret(**target) if target is not None else None,
     )
 
 
@@ -331,13 +401,13 @@ def committed(cwd: Path, environment: Mapping[str, str]) -> Declaration | None:
     if git(["rev-parse", "--git-dir"], cwd, safe).returncode:
         return None
     for revision in ("HEAD", "refs/remotes/origin/HEAD"):
-        declaration = _at_revision(cwd, safe, revision)
+        declaration = at_revision(cwd, safe, revision)
         if declaration is not None:
             return declaration
     return None
 
 
-def _at_revision(
+def at_revision(
     cwd: Path, environment: Mapping[str, str], revision: str
 ) -> Declaration | None:
     try:

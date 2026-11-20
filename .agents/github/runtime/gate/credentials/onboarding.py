@@ -77,6 +77,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
         first = (self.server.now + timedelta(days=1)).date().isoformat()
         instructions = html.escape(service.provider.instructions(service.credential))
+        button = (
+            "Verify and publish to GitHub Actions"
+            if service.credential.actions_secret is not None
+            else "Verify and save in the OS vault"
+        )
         self.reply(
             200,
             "<!doctype html><title>Credential enrollment</title>"
@@ -88,7 +93,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '<label><input type="checkbox" name="confirmed" value="yes" required>'
             "I selected this account, organization, scopes and expiry, "
             "and completed required SSO authorization.</label>"
-            "<button>Verify and save in the OS vault</button></form>",
+            f"<button>{button}</button></form>",
         )
 
     def do_POST(self) -> None:

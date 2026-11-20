@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from credentials import (
+    actions,
     azure_cli,
     children,
     docker,
@@ -25,6 +26,7 @@ from credentials import (
 )
 from credentials.context import Context
 from credentials.model import Client, CredentialError, Tool
+from credentials.owner_receipt import OwnerReceipt
 
 
 class Runner(Protocol):
@@ -51,9 +53,10 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     check = commands.add_parser("check")
     check.add_argument("--name")
-    for name in ("onboard", "rotate"):
+    for name in ("onboard", "rotate", "publish"):
         onboard = commands.add_parser(name)
         onboard.add_argument("--name", required=True)
+        onboard.add_argument("--result-file", type=Path)
     plugin = commands.add_parser("nuget")
     plugin.add_argument("-Plugin", action="store_true", required=True, dest="plugin")
     commands.add_parser("mcp")
@@ -64,6 +67,21 @@ def parser() -> argparse.ArgumentParser:
 
 
 def check(context: Context, name: str | None, now: datetime) -> int:
+    if name and (
+        context.declaration is None
+        or not any(item.name == name for item in context.declaration.credentials)
+    ):
+        print(
+            json.dumps(
+                {
+                    "name": name,
+                    "status": "not-declared",
+                    "action": "commit the named credential in .agents/repository.json; "
+                    "for a workflow token declare actions_secret, then rerun check",
+                }
+            )
+        )
+        return 1
     if context.declaration is None:
         print(json.dumps({"status": "not-declared"}))
         return 0
@@ -77,16 +95,31 @@ def check(context: Context, name: str | None, now: datetime) -> int:
             health = context.service(credential).check(now)
         except CredentialError as error:
             failed = True
-            results.append(
-                {
-                    "name": credential.name,
-                    "status": "unavailable",
-                    "reason": str(error),
-                    "action": credential.action,
-                }
-            )
+            failure: dict[str, object] = {
+                "name": credential.name,
+                "status": "unavailable",
+                "reason": str(error),
+                "action": credential.action,
+            }
+            if credential.actions_secret is not None:
+                failure.update(
+                    repository=credential.actions_secret.repository,
+                    secret=credential.actions_secret.name,
+                    workflow_status="unverified",
+                    owner_action=credential.action,
+                )
+            results.append(failure)
         else:
-            results.append(asdict(health))
+            record = asdict(health)
+            if credential.actions_secret is not None:
+                record.update(
+                    repository=credential.actions_secret.repository,
+                    secret=credential.actions_secret.name,
+                    workflow_status="unverified",
+                    owner_action=health.action
+                    or f"tj-credentials publish --name {credential.name}",
+                )
+            results.append(record)
     print(json.dumps({"credentials": results}))
     return 1 if failed else 0
 
@@ -106,7 +139,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     state_root = Path(
         environment.get("AGENT_STATE_DIRECTORY", str(Path.home() / ".agents-state"))
     )
+    receipt: OwnerReceipt | None = None
     try:
+        if getattr(arguments, "result_file", None) is not None:
+            receipt = OwnerReceipt.start(
+                arguments.result_file, arguments.command, arguments.name
+            )
         context = Context.load(
             Path.cwd(), environment, state_root, windows=os.name == "nt"
         )
@@ -135,16 +173,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             return nuget.serve(
                 sys.stdin, sys.stdout, context.resolve, now, declared=configured
             )
-        service = context.named(arguments.name)
-        candidate = onboarding.receive(service, now)
-        health = service.onboard(
-            candidate.secret, candidate.expires_at, datetime.now(UTC)
+        credential = context.named(arguments.name)
+        if receipt and credential.actions_secret is None:
+            raise CredentialError(
+                "actions-undeclared: owner receipts require a hosted credential"
+            )
+        publisher = (
+            actions.Publisher.prepare(context, credential)
+            if credential.actions_secret is not None or arguments.command == "publish"
+            else None
         )
-        print(json.dumps(asdict(health)))
+        service = context.service(credential)
+        if arguments.command != "publish":
+            candidate = onboarding.receive(service, now)
+            health = service.onboard(
+                candidate.secret, candidate.expires_at, datetime.now(UTC)
+            )
+            if publisher is None:
+                print(json.dumps(asdict(health)))
+                return 0
+        if publisher is None:
+            raise CredentialError("actions-undeclared: select a hosted credential")
+        result = publisher.publish(service)
+        if receipt:
+            receipt.write("complete", 0, result)
+        print(json.dumps(result))
     except CredentialError as error:
+        if receipt:
+            receipt.failed(str(error))
         print(str(error), file=sys.stderr)
         return 1
     except (OSError, ValueError):
+        if receipt:
+            receipt.failed("credential-operation-failed")
         print(
             "credential-operation-failed: check the declared tools and public state",
             file=sys.stderr,

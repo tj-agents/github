@@ -78,3 +78,65 @@ Otherwise remove the broker-managed source's credential entry. Preserve unrelate
 For source development, invoke `python -B <plugin-root>/.agents/github/runtime/gate/tj_credentials.py`
 with the same command arguments. Installed clients use the setup-created launchers; they do not depend on
 a producer checkout. A declaration on the default branch becomes available to older worktrees after fetch.
+
+## Private source reads in GitHub Actions
+
+Commit the credential in the destination repository's `.agents/repository.json`. Add the optional
+`actions_secret` destination to a fine-grained GitHub credential that declares only Contents read
+and one Git endpoint per source repository under the same owner.
+
+```json
+{
+  "name": "private-source-read",
+  "provider": "github-fine-grained",
+  "owner": "Example",
+  "login": "example-user",
+  "expires_in": 30,
+  "scopes": [],
+  "permissions": {"contents": "read"},
+  "endpoints": [{"client": "git", "url": "https://github.com/Example/private-source"}],
+  "actions_secret": {"repository": "Example/catalog", "name": "PRIVATE_SOURCE_READ"}
+}
+```
+
+The owner's `tj-credentials onboard --name private-source-read` verifies their CLI identity and the
+destination against the checkout's HTTPS origin and the remote repository. In the issuer form choose
+only the listed source repositories and Contents read. The human confirms the grant. The broker
+verifies the candidate's identity and reads a commit from each source. GitHub's token API does not
+attest that no additional repositories or permissions were granted.
+
+The broker keeps a dedicated OS-vault enrollment for that destination and secret name. Its endpoints
+serve as probes only. It sends the verified value to `gh secret set` on stdin and checks the secret's
+metadata. If the upload fails after enrollment, the owner can run `tj-credentials publish --name
+private-source-read` to recheck and publish the saved credential. `rotate` uses the same guarded flow
+for a replacement. Run owner commands in a human terminal with the declared login and permission to
+manage that repository's Actions secrets. Agent sessions and credential overrides are refused.
+
+A successful local check verifies the saved credential. The hosted value is write-only. The
+publication receipt confirms the destination accepted the secret and the original workflow's
+successful private fetch establishes that a runner can use it. Upgrade the credential broker before
+committing a declaration that uses a newly supported field.
+
+### Windows owner handoff
+
+Prepare one desktop shortcut from the action that the broker's check reported. Give the script a
+new local attempt directory. The calling session that owns the user handoff uses `cli:clip` on the
+returned `command_file` when the declaration and installed broker are ready.
+
+```powershell
+& '<access-skill>/scripts/prepare_owner.ps1' -Repository '<destination checkout>' `
+    -Name private-source-read -Operation onboard -AttemptDirectory '<new attempt directory>'
+```
+
+The prepared PowerShell `!` command opens a folder containing the single named shortcut.
+The owner double-clicks it to run the installed broker in the destination checkout. This preserves
+the owner's desktop sign-in even when the host marks its user-shell commands as agent processes.
+Keep the issuer and submission flow open while awaiting the owner. On other platforms run the displayed
+owner action in the owner's terminal with `--result-file <new local path>` in an existing directory.
+
+Read the returned `result_file` as JSON. A running receipt contains the PID and start time. Match the
+process command line to its unique result path and operation before treating it as live. Reopening
+the shortcut preserves the original attempt. A missing receipt indicates no verified start.
+Only `state=complete`, `exit_code=0`, `status=published` and the expected destination confirm
+publication. After a failed or interrupted attempt, diagnose it, run the named check again, and
+prepare a fresh attempt for the action it reports.

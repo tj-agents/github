@@ -167,6 +167,19 @@ def verify_endpoints(
                 raise CredentialError(
                     "credential-probe-invalid: unexpected repository identity"
                 )
+            if credential.actions_secret is not None:
+                commits = transport(url + "/commits?per_page=1", authorization(secret))
+                http.require_success(commits, credential.action)
+                latest = commits.json()
+                if not (
+                    isinstance(latest, list)
+                    and latest
+                    and isinstance(latest[0], dict)
+                    and re.fullmatch(r"[0-9a-f]{40}", str(latest[0].get("sha")))
+                ):
+                    raise CredentialError(
+                        "credential-probe-invalid: expected a readable source commit"
+                    )
         elif endpoint.client == Client.CONTAINER:
             response = container_probe(credential, endpoint, secret, transport)
         else:
