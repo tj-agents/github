@@ -64,7 +64,6 @@ class Publisher:
             for key in (
                 "GH_TOKEN",
                 "GITHUB_TOKEN",
-                "GH_CONFIG_DIR",
                 "GH_ENTERPRISE_TOKEN",
                 "GITHUB_ENTERPRISE_TOKEN",
                 "GITHUB_ACTIONS",
@@ -74,6 +73,8 @@ class Publisher:
                 "actions-credential-override: use the configured GitHub CLI sign-in"
             )
         child = private_environment(env)
+        if "GH_CONFIG_DIR" in env:
+            child["GH_CONFIG_DIR"] = env["GH_CONFIG_DIR"]
         child.update(GH_HOST="github.com", GH_PROMPT_DISABLED="1")
         publisher = cls(target, child, context, credential, operation)
         publisher.validate_destination()

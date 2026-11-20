@@ -86,7 +86,13 @@ def test_credential_overrides_and_wrong_origin_refused_before_owner_cli(
 ) -> None:
     from credentials.actions import Publisher
 
-    for marker in ("GH_TOKEN", "GH_CONFIG_DIR", "GITHUB_TOKEN"):
+    for marker in (
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+        "GITHUB_ACTIONS",
+    ):
         env = sandbox.environment(**{marker: "1"})
         current = Context.load(checkout, env, sandbox.state, windows=False)
         with pytest.raises(CredentialError, match="actions-credential-override"):
@@ -138,6 +144,7 @@ def test_agent_opens_guarded_form_then_retries_publication_with_fresh_human_cons
     monkeypatch.setattr(context, "GCMVault", lambda *args, **kwargs: vault)
     for key in ("CODEX_THREAD_ID", "CLAUDECODE", "CODEX_SESSION_ID", "TJ_AGENT"):
         monkeypatch.setenv(key, "fixture-agent")
+    monkeypatch.setenv("GH_CONFIG_DIR", str(sandbox.root / "native-profile"))
     for key in (
         "GITHUB_ACTIONS",
         "GH_ENTERPRISE_TOKEN",
@@ -152,6 +159,7 @@ from pathlib import Path
 
 args = sys.argv[1:]
 root = Path(__file__).parent
+assert os.environ["GH_CONFIG_DIR"] == str(root / "native-profile")
 for marker in ("CODEX_THREAD_ID", "CLAUDECODE", "CODEX_SESSION_ID", "TJ_AGENT"):
     assert os.environ[marker] == "fixture-agent"
 with (root / "owner-calls").open("a", encoding="utf-8") as log:
@@ -168,7 +176,8 @@ if args[:1] == ["secret"]:
     (root / "sent").touch()
 else:
     assert not sys.stdin.buffer.read()
-    print({"user": "sample-user", "repos/sample-org/project": "sample-org/project",
+    actor = "other-user" if (root / "wrong-owner").exists() else "sample-user"
+    print({"user": actor, "repos/sample-org/project": "sample-org/project",
            "repos/sample-org/project/actions/secrets/public-key": "1",
            "repos/sample-org/project/actions/secrets/SOURCE_READ":
                "SOURCE_READ"}[args[1]])
@@ -228,7 +237,9 @@ else:
         assert ('name="token"' in page) is not publish
         assert vault.accesses == accesses
         call_log = sandbox.root / "owner-calls"
-        assert (call_log.read_text() if call_log.exists() else "") == calls
+        assert (
+            call_log.read_text(encoding="utf-8") if call_log.exists() else ""
+        ) == calls
         if attempt.exists():
             running = json.loads(attempt.read_text(encoding="utf-8"))
             assert running["pid"] > 0
@@ -269,7 +280,7 @@ else:
         opened.append(url)
         if url.startswith("http://127.0.0.1"):
             call_log = sandbox.root / "owner-calls"
-            calls = call_log.read_text() if call_log.exists() else ""
+            calls = call_log.read_text(encoding="utf-8") if call_log.exists() else ""
             responses.append(
                 browser_executor.submit(browser_submit, url, vault.accesses, calls)
             )
@@ -289,6 +300,13 @@ else:
     monkeypatch.setattr(webbrowser, "open", open_browser)
     monkeypatch.setattr(onboarding, "receive", bounded_receive)
     onboard = ("onboard", "--name", "ci-read")
+    wrong_owner = sandbox.root / "wrong-owner"
+    wrong_owner.touch()
+    assert tj_credentials.main(onboard) == 1
+    assert "actions-owner-mismatch" in capsys.readouterr().err
+    assert vault.accesses == 0
+    assert not (sandbox.root / "sent").exists()
+    wrong_owner.unlink()
     assert tj_credentials.main(onboard) == 1
     assert "credential-access-denied" in capsys.readouterr().err
     assert not vault
@@ -335,19 +353,19 @@ else:
     assert "127.0.0.1" not in retry.read_text(encoding="utf-8")
     change_enrollment = True
     accesses = vault.accesses
-    calls = (sandbox.root / "owner-calls").read_text()
+    calls = (sandbox.root / "owner-calls").read_text(encoding="utf-8")
     assert tj_credentials.main(("publish", "--name", "ci-read")) == 1
     assert "actions-enrollment-changed" in capsys.readouterr().err
     assert vault.accesses == accesses
-    assert (sandbox.root / "owner-calls").read_text() == calls
+    assert (sandbox.root / "owner-calls").read_text(encoding="utf-8") == calls
     change_enrollment = False
     change_declaration = True
     accesses = vault.accesses
-    calls = (sandbox.root / "owner-calls").read_text()
+    calls = (sandbox.root / "owner-calls").read_text(encoding="utf-8")
     assert tj_credentials.main(("publish", "--name", "ci-read")) == 1
     assert "actions-undeclared" in capsys.readouterr().err
     assert vault.accesses == accesses
-    assert (sandbox.root / "owner-calls").read_text() == calls
+    assert (sandbox.root / "owner-calls").read_text(encoding="utf-8") == calls
 
 
 def test_missing_named_workflow_credential_reports_declaration_action(
