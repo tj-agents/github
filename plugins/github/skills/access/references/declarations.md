@@ -116,3 +116,27 @@ A successful local check verifies the saved credential. The hosted value is writ
 publication receipt confirms the destination accepted the secret and the original workflow's
 successful private fetch establishes that a runner can use it. Upgrade the credential broker before
 committing a declaration that uses a newly supported field.
+
+### Windows owner handoff
+
+Prepare one desktop shortcut from the action that the broker's check reported. Give the script a
+new local attempt directory. The calling session that owns the user handoff uses `cli:clip` on the
+returned `command_file` when the declaration and installed broker are ready.
+
+```powershell
+& '<access-skill>/scripts/prepare_owner.ps1' -Repository '<destination checkout>' `
+    -Name private-source-read -Operation onboard -AttemptDirectory '<new attempt directory>'
+```
+
+The prepared PowerShell `!` command opens a folder containing the single named shortcut.
+The owner double-clicks it to run the installed broker in the destination checkout. This preserves
+the owner's desktop sign-in even when the host marks its user-shell commands as agent processes.
+Keep the issuer and submission flow open while awaiting the owner. On other platforms run the displayed
+owner action in the owner's terminal with `--result-file <new local path>` in an existing directory.
+
+Read the returned `result_file` as JSON. A running receipt contains the PID and start time. Match the
+process command line to its unique result path and operation before treating it as live. Reopening
+the shortcut preserves the original attempt. A missing receipt indicates no verified start.
+Only `state=complete`, `exit_code=0`, `status=published` and the expected destination confirm
+publication. After a failed or interrupted attempt, diagnose it, run the named check again, and
+prepare a fresh attempt for the action it reports.

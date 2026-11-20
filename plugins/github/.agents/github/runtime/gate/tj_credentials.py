@@ -26,6 +26,7 @@ from credentials import (
 )
 from credentials.context import Context
 from credentials.model import Client, CredentialError, Tool
+from credentials.owner_receipt import OwnerReceipt
 
 
 class Runner(Protocol):
@@ -55,6 +56,7 @@ def parser() -> argparse.ArgumentParser:
     for name in ("onboard", "rotate", "publish"):
         onboard = commands.add_parser(name)
         onboard.add_argument("--name", required=True)
+        onboard.add_argument("--result-file", type=Path)
     plugin = commands.add_parser("nuget")
     plugin.add_argument("-Plugin", action="store_true", required=True, dest="plugin")
     commands.add_parser("mcp")
@@ -137,7 +139,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     state_root = Path(
         environment.get("AGENT_STATE_DIRECTORY", str(Path.home() / ".agents-state"))
     )
+    receipt: OwnerReceipt | None = None
     try:
+        if getattr(arguments, "result_file", None) is not None:
+            receipt = OwnerReceipt.start(
+                arguments.result_file, arguments.command, arguments.name
+            )
         context = Context.load(
             Path.cwd(), environment, state_root, windows=os.name == "nt"
         )
@@ -167,27 +174,38 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdin, sys.stdout, context.resolve, now, declared=configured
             )
         credential = context.named(arguments.name)
+        if receipt and credential.actions_secret is None:
+            raise CredentialError(
+                "actions-undeclared: owner receipts require a hosted credential"
+            )
         publisher = (
             actions.Publisher.prepare(context, credential)
             if credential.actions_secret is not None or arguments.command == "publish"
             else None
         )
         service = context.service(credential)
-        if arguments.command == "publish" and publisher is not None:
-            print(json.dumps(publisher.publish(service)))
-            return 0
-        candidate = onboarding.receive(service, now)
-        health = service.onboard(
-            candidate.secret, candidate.expires_at, datetime.now(UTC)
-        )
+        if arguments.command != "publish":
+            candidate = onboarding.receive(service, now)
+            health = service.onboard(
+                candidate.secret, candidate.expires_at, datetime.now(UTC)
+            )
+            if publisher is None:
+                print(json.dumps(asdict(health)))
+                return 0
         if publisher is None:
-            print(json.dumps(asdict(health)))
-        else:
-            print(json.dumps(publisher.publish(service)))
+            raise CredentialError("actions-undeclared: select a hosted credential")
+        result = publisher.publish(service)
+        if receipt:
+            receipt.write("complete", 0, result)
+        print(json.dumps(result))
     except CredentialError as error:
+        if receipt:
+            receipt.failed(str(error))
         print(str(error), file=sys.stderr)
         return 1
     except (OSError, ValueError):
+        if receipt:
+            receipt.failed("credential-operation-failed")
         print(
             "credential-operation-failed: check the declared tools and public state",
             file=sys.stderr,

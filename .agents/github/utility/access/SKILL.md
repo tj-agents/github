@@ -65,6 +65,7 @@ When an Actions job cannot fetch a private source, use the workflow's secret nam
 destination repository. If absent, add the nonsecret declaration using the
 [declaration contract](references/declarations.md#private-source-reads-in-github-actions).
 When a failed workflow needs a credential, give the owner the displayed onboarding or publication
-command to run in their own terminal. It uses the existing guarded browser form and the owner's
-GitHub CLI sign-in. After the publication receipt, rerun the failed workflow and verify its private
+command. On Windows, prepare the owner shortcut using the declaration contract's
+[desktop handoff](references/declarations.md#windows-owner-handoff). It uses the existing guarded
+browser form and the owner's GitHub CLI sign-in. After the publication receipt, rerun the failed workflow and verify its private
 fetch. Leave agent Git and gh on their selected identity throughout.

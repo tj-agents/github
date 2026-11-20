@@ -157,6 +157,7 @@ else:
     )
     monkeypatch.setattr(children, "real_tool", lambda name, environment: native)
     source_status = 403
+    attempt = sandbox.root / "onboard.json"
 
     def request(
         url: str, headers: Mapping[str, str], *, proxies: Mapping[str, str]
@@ -175,6 +176,10 @@ else:
 
     def receive(service: Service, now: datetime) -> onboarding.Candidate:
         assert service.credential == hosted
+        if attempt.exists():
+            running = json.loads(attempt.read_text(encoding="utf-8"))
+            assert running["state"] == "running"
+            assert running["pid"] > 0
         return onboarding.Candidate(TOKEN, now + timedelta(days=25))
 
     monkeypatch.setattr(http, "request", request)
@@ -184,19 +189,39 @@ else:
     assert "credential-access-denied" in capsys.readouterr().err
     assert not vault
     source_status = 200
-    assert tj_credentials.main(onboard) == 1
+    assert tj_credentials.main((*onboard, "--result-file", str(attempt))) == 1
     failed = capsys.readouterr()
     assert "actions-owner-operation-failed" in failed.err
     assert TOKEN.value not in failed.err + failed.out
+    receipt = attempt.read_text(encoding="utf-8")
+    assert TOKEN.value not in receipt
+    assert json.loads(receipt)["state"] == "failed"
+    assert tj_credentials.main((*onboard, "--result-file", str(attempt))) == 1
+    assert "owner-attempt-exists" in capsys.readouterr().err
+    assert attempt.read_text(encoding="utf-8") == receipt
     assert not (sandbox.root / "sent").exists()
     assert tj_credentials.main(("check", "--name", "ci-read")) == 0
     row = json.loads(capsys.readouterr().out)["credentials"][0]
     assert row["workflow_status"] == "unverified"
     assert row["owner_action"] == "tj-credentials publish --name ci-read"
     (sandbox.root / "allow").touch()
-    assert tj_credentials.main(("publish", "--name", "ci-read")) == 0
+    retry = sandbox.root / "publish.json"
+    assert (
+        tj_credentials.main(
+            ("publish", "--name", "ci-read", "--result-file", str(retry))
+        )
+        == 0
+    )
     assert (sandbox.root / "sent").exists()
     assert json.loads(capsys.readouterr().out)["status"] == "published"
+    finished = json.loads(retry.read_text(encoding="utf-8"))
+    assert (finished["state"], finished["exit_code"], finished["status"]) == (
+        "complete",
+        0,
+        "published",
+    )
+    assert finished["secret"] == "SOURCE_READ"
+    assert finished["repository"] == "sample-org/project"
 
 
 def test_missing_named_workflow_credential_reports_declaration_action(
