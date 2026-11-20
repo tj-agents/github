@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from credentials import (
+    actions,
     azure_cli,
     children,
     docker,
@@ -51,7 +52,7 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     check = commands.add_parser("check")
     check.add_argument("--name")
-    for name in ("onboard", "rotate"):
+    for name in ("onboard", "rotate", "publish"):
         onboard = commands.add_parser(name)
         onboard.add_argument("--name", required=True)
     plugin = commands.add_parser("nuget")
@@ -64,6 +65,21 @@ def parser() -> argparse.ArgumentParser:
 
 
 def check(context: Context, name: str | None, now: datetime) -> int:
+    if name and (
+        context.declaration is None
+        or not any(item.name == name for item in context.declaration.credentials)
+    ):
+        print(
+            json.dumps(
+                {
+                    "name": name,
+                    "status": "not-declared",
+                    "action": "commit the named credential in .agents/repository.json; "
+                    "for a workflow token declare actions_secret, then rerun check",
+                }
+            )
+        )
+        return 1
     if context.declaration is None:
         print(json.dumps({"status": "not-declared"}))
         return 0
@@ -77,16 +93,31 @@ def check(context: Context, name: str | None, now: datetime) -> int:
             health = context.service(credential).check(now)
         except CredentialError as error:
             failed = True
-            results.append(
-                {
-                    "name": credential.name,
-                    "status": "unavailable",
-                    "reason": str(error),
-                    "action": credential.action,
-                }
-            )
+            failure: dict[str, object] = {
+                "name": credential.name,
+                "status": "unavailable",
+                "reason": str(error),
+                "action": credential.action,
+            }
+            if credential.actions_secret is not None:
+                failure.update(
+                    repository=credential.actions_secret.repository,
+                    secret=credential.actions_secret.name,
+                    workflow_status="unverified",
+                    owner_action=credential.action,
+                )
+            results.append(failure)
         else:
-            results.append(asdict(health))
+            record = asdict(health)
+            if credential.actions_secret is not None:
+                record.update(
+                    repository=credential.actions_secret.repository,
+                    secret=credential.actions_secret.name,
+                    workflow_status="unverified",
+                    owner_action=health.action
+                    or f"tj-credentials publish --name {credential.name}",
+                )
+            results.append(record)
     print(json.dumps({"credentials": results}))
     return 1 if failed else 0
 
@@ -135,12 +166,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             return nuget.serve(
                 sys.stdin, sys.stdout, context.resolve, now, declared=configured
             )
-        service = context.named(arguments.name)
+        credential = context.named(arguments.name)
+        publisher = (
+            actions.Publisher.prepare(context, credential)
+            if credential.actions_secret is not None or arguments.command == "publish"
+            else None
+        )
+        service = context.service(credential)
+        if arguments.command == "publish" and publisher is not None:
+            print(json.dumps(publisher.publish(service)))
+            return 0
         candidate = onboarding.receive(service, now)
         health = service.onboard(
             candidate.secret, candidate.expires_at, datetime.now(UTC)
         )
-        print(json.dumps(asdict(health)))
+        if publisher is None:
+            print(json.dumps(asdict(health)))
+        else:
+            print(json.dumps(publisher.publish(service)))
     except CredentialError as error:
         print(str(error), file=sys.stderr)
         return 1

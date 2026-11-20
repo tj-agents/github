@@ -52,12 +52,12 @@ class Context:
             partial(http.request, proxies=http.proxy_configuration(self.environment)),
         )
 
-    def named(self, name: str) -> Service:
+    def named(self, name: str) -> Credential:
         if self.declaration is None:
             raise CredentialError(
                 "credentials-undeclared: declare credentials in .agents/repository.json"
             )
-        return self.service(self.declaration.named(name))
+        return self.declaration.named(name)
 
     def resolve(self, client: Client, url: str) -> Service | None:
         if self.declaration is None:

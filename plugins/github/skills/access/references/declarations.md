@@ -78,3 +78,41 @@ Otherwise remove the broker-managed source's credential entry. Preserve unrelate
 For source development, invoke `python -B <plugin-root>/.agents/github/runtime/gate/tj_credentials.py`
 with the same command arguments. Installed clients use the setup-created launchers; they do not depend on
 a producer checkout. A declaration on the default branch becomes available to older worktrees after fetch.
+
+## Private source reads in GitHub Actions
+
+Commit the credential in the destination repository's `.agents/repository.json`. Add the optional
+`actions_secret` destination to a fine-grained GitHub credential that declares only Contents read
+and one Git endpoint per source repository under the same owner.
+
+```json
+{
+  "name": "private-source-read",
+  "provider": "github-fine-grained",
+  "owner": "Example",
+  "login": "example-user",
+  "expires_in": 30,
+  "scopes": [],
+  "permissions": {"contents": "read"},
+  "endpoints": [{"client": "git", "url": "https://github.com/Example/private-source"}],
+  "actions_secret": {"repository": "Example/catalog", "name": "PRIVATE_SOURCE_READ"}
+}
+```
+
+The owner's `tj-credentials onboard --name private-source-read` verifies their CLI identity and the
+destination against the checkout's HTTPS origin and the remote repository. In the issuer form choose
+only the listed source repositories and Contents read. The human confirms the grant. The broker
+verifies the candidate's identity and reads a commit from each source. GitHub's token API does not
+attest that no additional repositories or permissions were granted.
+
+The broker keeps a dedicated OS-vault enrollment for that destination and secret name. Its endpoints
+serve as probes only. It sends the verified value to `gh secret set` on stdin and checks the secret's
+metadata. If the upload fails after enrollment, the owner can run `tj-credentials publish --name
+private-source-read` to recheck and publish the saved credential. `rotate` uses the same guarded flow
+for a replacement. Run owner commands in a human terminal with the declared login and permission to
+manage that repository's Actions secrets. Agent sessions and credential overrides are refused.
+
+A successful local check verifies the saved credential. The hosted value is write-only. The
+publication receipt confirms the destination accepted the secret and the original workflow's
+successful private fetch establishes that a runner can use it. Upgrade the credential broker before
+committing a declaration that uses a newly supported field.

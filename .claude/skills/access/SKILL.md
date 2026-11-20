@@ -1,6 +1,6 @@
 ---
 name: access
-description: Enroll, rotate and diagnose repository-declared GitHub and Azure DevOps credentials, including Git, gh, MCP and private package feeds. Use when a declared credential is missing, expiring or refused, or when adopting credential tooling.
+description: Enroll, rotate and diagnose repository-declared GitHub and Azure DevOps credentials, including private source reads in GitHub Actions, Git, gh, MCP and package feeds. Use for missing, expiring or refused credentials and credential adoption.
 kind: utility
 domain: github
 profile: core
