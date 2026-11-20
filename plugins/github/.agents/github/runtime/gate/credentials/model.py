@@ -156,9 +156,13 @@ class Credential:
             raise CredentialError("credentials-invalid: invalid account login")
         if self.actions_secret is not None:
             self.validate_actions_secret(self.actions_secret)
-        if type(self.expires_in) is not int or not 1 <= self.expires_in <= 90:
+        maximum_lifetime = 180 if self.actions_secret is not None else 90
+        if (
+            type(self.expires_in) is not int
+            or not 1 <= self.expires_in <= maximum_lifetime
+        ):
             raise CredentialError(
-                "credentials-invalid: expires_in must be 1 to 90 days"
+                f"credentials-invalid: expires_in must be 1 to {maximum_lifetime} days"
             )
         if not self.endpoints or len(set(self.endpoints)) != len(self.endpoints):
             raise CredentialError(

@@ -169,6 +169,7 @@ def hosted_form(local_form: onboarding.Server) -> onboarding.Server:
         "example-user",
         (),
         (Endpoint(Client.GIT, "https://github.com/Example/private"),),
+        expires_in=180,
         permissions=(("contents", "read"),),
         actions_secret=ActionsSecret("Example/catalog", "PRIVATE_SOURCE_READ"),
     )
@@ -181,6 +182,10 @@ def hosted_form(local_form: onboarding.Server) -> onboarding.Server:
 
 @pytest.mark.allow_hosts(["127.0.0.1"])
 def test_chrome_can_submit_the_guarded_form(hosted_form: onboarding.Server) -> None:
+    issuer = github_fine_grained.creation_url(hosted_form.service.credential)
+    assert urllib.parse.parse_qs(urllib.parse.urlsplit(issuer).query)["expires_in"] == [
+        "180"
+    ]
     with sync_api.sync_playwright() as playwright:
         try:
             browser = playwright.chromium.launch(channel="chrome")
@@ -191,6 +196,10 @@ def test_chrome_can_submit_the_guarded_form(hosted_form: onboarding.Server) -> N
         with browser:
             page = browser.new_page()
             page.goto(f"http://127.0.0.1:{hosted_form.server_port}/fixture-nonce")
+            assert (
+                page.get_by_label("Token expiry").input_value()
+                == (NOW + timedelta(days=180)).date().isoformat()
+            )
             page.get_by_label("Credential", exact=True).fill(TOKEN)
             page.get_by_label("I selected this account", exact=False).check()
             page.get_by_label("I authorize onboard", exact=False).check()

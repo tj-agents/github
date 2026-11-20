@@ -36,8 +36,10 @@ The same provider, owner and login share one enrollment across repositories and 
 
 `name` selects the displayed onboarding action. `provider` is `github-classic`, `github-fine-grained` or
 `azure-devops-pat`. `owner` and `login` select the expected account and organization, not a machine path.
-`expires_in` is a maximum lifetime of 1–90 days; the human confirms the actual expiry locally. GitHub's
-reported expiry takes precedence when earlier. Saved metadata contains only a random vault version and
+`expires_in` sets the proposed lifetime and the maximum accepted by the broker. The range is 1–90 days
+for local credentials and 1–180 days for Actions private-source read credentials. The human confirms
+the actual expiry locally. GitHub's reported expiry takes precedence when earlier. Saved metadata
+contains only a random vault version and
 expiry. Revocation still requires a live check; no expiry date proves a token remains valid.
 
 `scopes` lists the issuer's required scopes. GitHub Packages requires a classic PAT with `read:packages`;
@@ -91,7 +93,7 @@ and one Git endpoint per source repository under the same owner.
   "provider": "github-fine-grained",
   "owner": "Example",
   "login": "example-user",
-  "expires_in": 30,
+  "expires_in": 180,
   "scopes": [],
   "permissions": {"contents": "read"},
   "endpoints": [{"client": "git", "url": "https://github.com/Example/private-source"}],
