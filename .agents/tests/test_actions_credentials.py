@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import contextlib
+import http.client
 import json
 import sys
-from collections.abc import Mapping
+import urllib.parse
+import webbrowser
+from collections.abc import Iterator, Mapping
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
+import credentials.http
 import pytest
 import tj_credentials
-from credentials import children, context, http, onboarding
+from credentials import children, context, onboarding
 from credentials.context import Context
 from credentials.model import (
     ActionsSecret,
@@ -73,18 +79,18 @@ def checkout(
     return repo
 
 
-def test_agent_refused_before_issuer_vault_or_owner_cli(
+def test_credential_overrides_and_wrong_origin_refused_before_owner_cli(
     sandbox: Sandbox,
     checkout: Path,
     hosted: Credential,
 ) -> None:
     from credentials.actions import Publisher
 
-    for marker in ("CODEX_THREAD_ID", "CLAUDECODE", "GH_TOKEN", "TJ_AGENT"):
+    for marker in ("GH_TOKEN", "GH_CONFIG_DIR", "GITHUB_TOKEN"):
         env = sandbox.environment(**{marker: "1"})
         current = Context.load(checkout, env, sandbox.state, windows=False)
-        with pytest.raises(CredentialError, match="actions-owner-required"):
-            Publisher.prepare(current, hosted)
+        with pytest.raises(CredentialError, match="actions-credential-override"):
+            Publisher.prepare(current, hosted, onboarding.Operation.ONBOARD)
     sandbox.git(
         checkout, "remote", "set-url", "origin", "https://github.com/sample-org/fork"
     )
@@ -92,32 +98,47 @@ def test_agent_refused_before_issuer_vault_or_owner_cli(
         checkout, sandbox.environment(), sandbox.state, windows=False
     )
     with pytest.raises(CredentialError, match="actions-origin-mismatch"):
-        Publisher.prepare(current, hosted)
+        Publisher.prepare(current, hosted, onboarding.Operation.ONBOARD)
 
 
 class FixtureVault(dict[str, Secret]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.accesses = 0
+
     def write(self, version: str, secret: Secret) -> None:
+        self.accesses += 1
         self[version] = secret
 
     def read(self, version: str) -> Secret:
+        self.accesses += 1
         return self[version]
 
     def erase(self, version: str) -> None:
         del self[version]
 
 
-def test_owner_onboards_then_retries_publication_without_reentering_token(
+@pytest.fixture
+def browser_executor() -> Iterator[ThreadPoolExecutor]:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        yield executor
+
+
+@pytest.mark.allow_hosts(["127.0.0.1"])
+def test_agent_opens_guarded_form_then_retries_publication_with_fresh_human_consent(
     sandbox: Sandbox,
     checkout: Path,
     hosted: Credential,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    browser_executor: ThreadPoolExecutor,
 ) -> None:
     # All remote calls and the OS vault belong to the fixture.
     vault = FixtureVault()
     monkeypatch.setattr(context, "GCMVault", lambda *args, **kwargs: vault)
+    for key in ("CODEX_THREAD_ID", "CLAUDECODE", "CODEX_SESSION_ID", "TJ_AGENT"):
+        monkeypatch.setenv(key, "fixture-agent")
     for key in (
-        "CODEX_SESSION_ID",
         "GITHUB_ACTIONS",
         "GH_ENTERPRISE_TOKEN",
         "GITHUB_ENTERPRISE_TOKEN",
@@ -131,6 +152,10 @@ from pathlib import Path
 
 args = sys.argv[1:]
 root = Path(__file__).parent
+for marker in ("CODEX_THREAD_ID", "CLAUDECODE", "CODEX_SESSION_ID", "TJ_AGENT"):
+    assert os.environ[marker] == "fixture-agent"
+with (root / "owner-calls").open("a", encoding="utf-8") as log:
+    log.write(args[0] + "\\n")
 if args[:1] == ["secret"]:
     assert args == ["secret", "set", "SOURCE_READ", "--app", "actions",
                     "--repo", "github.com/sample-org/project"]
@@ -161,29 +186,108 @@ else:
 
     def request(
         url: str, headers: Mapping[str, str], *, proxies: Mapping[str, str]
-    ) -> http.Response:
+    ) -> credentials.http.Response:
         assert headers["Authorization"] == "Bearer " + TOKEN.value
         if url.endswith("/user"):
-            return http.Response(200, {}, b'{"login":"sample-user"}')
+            return credentials.http.Response(200, {}, b'{"login":"sample-user"}')
         if url.endswith("/private"):
-            return http.Response(200, {}, b'{"full_name":"sample-org/private"}')
+            return credentials.http.Response(
+                200, {}, b'{"full_name":"sample-org/private"}'
+            )
         assert (
             url == "https://api.github.com/repos/sample-org/private/commits?per_page=1"
         )
-        return http.Response(
+        return credentials.http.Response(
             source_status, {}, json.dumps([{"sha": "a" * 40}]).encode()
         )
 
-    def receive(service: Service, now: datetime) -> onboarding.Candidate:
-        assert service.credential == hosted
+    opened: list[str] = []
+    responses: list[Future[None]] = []
+    publish = False
+    change_declaration = False
+    change_enrollment = False
+
+    def browser_submit(url: str, accesses: int, calls: str) -> None:
+        parsed = urllib.parse.urlsplit(url)
+        with contextlib.closing(
+            http.client.HTTPConnection("127.0.0.1", parsed.port, timeout=5)
+        ) as connection:
+            connection.request("GET", parsed.path)
+            response = connection.getresponse()
+            page = response.read().decode()
+            assert response.status == 200
+        for text in (
+            "sample-user",
+            "sample-org/project",
+            "SOURCE_READ",
+            "sample-org/private",
+            "Contents: Read-only",
+            "publish" if publish else "onboard",
+        ):
+            assert text in page
+        assert ('name="token"' in page) is not publish
+        assert vault.accesses == accesses
+        call_log = sandbox.root / "owner-calls"
+        assert (call_log.read_text() if call_log.exists() else "") == calls
         if attempt.exists():
             running = json.loads(attempt.read_text(encoding="utf-8"))
-            assert running["state"] == "running"
             assert running["pid"] > 0
-        return onboarding.Candidate(TOKEN, now + timedelta(days=25))
+        fields = {"publication": "yes"}
+        if not publish:
+            # The date is read from the form to exercise its actual expiry limits.
+            last = page.split('max="', 1)[1].split('"', 1)[0]
+            fields.update(token=TOKEN.value, expires_at=last, confirmed="yes")
+        if change_declaration:
+            declaration = checkout / ".agents/repository.json"
+            data = json.loads(declaration.read_text(encoding="utf-8"))
+            data["credentials"][0]["actions_secret"]["name"] = "OTHER_SECRET"
+            declaration.write_text(json.dumps(data), encoding="utf-8")
+            sandbox.git(checkout, "add", ".agents/repository.json")
+            sandbox.git(checkout, "commit", "-m", "Change destination during consent")
+        if change_enrollment:
+            active = sandbox.state / "credentials" / hosted.key / "active.json"
+            data = json.loads(active.read_text(encoding="utf-8"))
+            data["version"] = "b" * 32
+            active.write_text(json.dumps(data), encoding="utf-8")
+        with contextlib.closing(
+            http.client.HTTPConnection("127.0.0.1", parsed.port, timeout=5)
+        ) as connection:
+            connection.request(
+                "POST",
+                parsed.path,
+                urllib.parse.urlencode(fields),
+                {
+                    "Origin": "http://" + parsed.netloc,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            )
+            response = connection.getresponse()
+            assert response.status == 200
+            assert TOKEN.value not in response.read().decode()
 
-    monkeypatch.setattr(http, "request", request)
-    monkeypatch.setattr(onboarding, "receive", receive)
+    def open_browser(url: str) -> bool:
+        opened.append(url)
+        if url.startswith("http://127.0.0.1"):
+            call_log = sandbox.root / "owner-calls"
+            calls = call_log.read_text() if call_log.exists() else ""
+            responses.append(
+                browser_executor.submit(browser_submit, url, vault.accesses, calls)
+            )
+        return True
+
+    receive = onboarding.receive
+
+    def bounded_receive(
+        service: Service, now: datetime, *, operation: onboarding.Operation
+    ) -> onboarding.Submission:
+        try:
+            return receive(service, now, operation=operation, timeout=10)
+        finally:
+            responses[-1].result(timeout=5)
+
+    monkeypatch.setattr(credentials.http, "request", request)
+    monkeypatch.setattr(webbrowser, "open", open_browser)
+    monkeypatch.setattr(onboarding, "receive", bounded_receive)
     onboard = ("onboard", "--name", "ci-read")
     assert tj_credentials.main(onboard) == 1
     assert "credential-access-denied" in capsys.readouterr().err
@@ -193,6 +297,9 @@ else:
     failed = capsys.readouterr()
     assert "actions-owner-operation-failed" in failed.err
     assert TOKEN.value not in failed.err + failed.out
+    assert "127.0.0.1" not in failed.err + failed.out
+    for url in opened:
+        assert urllib.parse.urlsplit(url).path not in failed.err + failed.out
     receipt = attempt.read_text(encoding="utf-8")
     assert TOKEN.value not in receipt
     assert json.loads(receipt)["state"] == "failed"
@@ -206,6 +313,8 @@ else:
     assert row["owner_action"] == "tj-credentials publish --name ci-read"
     (sandbox.root / "allow").touch()
     retry = sandbox.root / "publish.json"
+    publish = True
+    opened.clear()
     assert (
         tj_credentials.main(
             ("publish", "--name", "ci-read", "--result-file", str(retry))
@@ -213,7 +322,7 @@ else:
         == 0
     )
     assert (sandbox.root / "sent").exists()
-    assert json.loads(capsys.readouterr().out)["status"] == "published"
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["status"] == "published"
     finished = json.loads(retry.read_text(encoding="utf-8"))
     assert (finished["state"], finished["exit_code"], finished["status"]) == (
         "complete",
@@ -222,6 +331,23 @@ else:
     )
     assert finished["secret"] == "SOURCE_READ"
     assert finished["repository"] == "sample-org/project"
+    assert len(opened) == 1
+    assert "127.0.0.1" not in retry.read_text(encoding="utf-8")
+    change_enrollment = True
+    accesses = vault.accesses
+    calls = (sandbox.root / "owner-calls").read_text()
+    assert tj_credentials.main(("publish", "--name", "ci-read")) == 1
+    assert "actions-enrollment-changed" in capsys.readouterr().err
+    assert vault.accesses == accesses
+    assert (sandbox.root / "owner-calls").read_text() == calls
+    change_enrollment = False
+    change_declaration = True
+    accesses = vault.accesses
+    calls = (sandbox.root / "owner-calls").read_text()
+    assert tj_credentials.main(("publish", "--name", "ci-read")) == 1
+    assert "actions-undeclared" in capsys.readouterr().err
+    assert vault.accesses == accesses
+    assert (sandbox.root / "owner-calls").read_text() == calls
 
 
 def test_missing_named_workflow_credential_reports_declaration_action(

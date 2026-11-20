@@ -179,22 +179,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "actions-undeclared: owner receipts require a hosted credential"
             )
         publisher = (
-            actions.Publisher.prepare(context, credential)
+            actions.Publisher.prepare(
+                context, credential, onboarding.Operation(arguments.command)
+            )
             if credential.actions_secret is not None or arguments.command == "publish"
             else None
         )
         service = context.service(credential)
-        if arguments.command != "publish":
-            candidate = onboarding.receive(service, now)
+        submission = onboarding.receive(
+            service, now, operation=onboarding.Operation(arguments.command)
+        )
+        if publisher is None:
+            candidate = submission.candidate
+            if candidate is None:
+                raise CredentialError("actions-undeclared: select a hosted credential")
             health = service.onboard(
                 candidate.secret, candidate.expires_at, datetime.now(UTC)
             )
-            if publisher is None:
-                print(json.dumps(asdict(health)))
-                return 0
-        if publisher is None:
-            raise CredentialError("actions-undeclared: select a hosted credential")
-        result = publisher.publish(service)
+            print(json.dumps(asdict(health)))
+            return 0
+        result = publisher.publish(service, submission)
         if receipt:
             receipt.write("complete", 0, result)
         print(json.dumps(result))

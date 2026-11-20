@@ -99,44 +99,49 @@ and one Git endpoint per source repository under the same owner.
 }
 ```
 
-The owner's `tj-credentials onboard --name private-source-read` verifies their CLI identity and the
-destination against the checkout's HTTPS origin and the remote repository. In the issuer form choose
-only the listed source repositories and Contents read. The human confirms the grant. The broker
+The agent starts `tj-credentials onboard --name private-source-read` from the destination checkout.
+The broker checks the committed declaration and HTTPS origin, then opens the issuer and guarded
+local submission pages. In the issuer form the human chooses
+only the listed source repositories and Contents read. The local form asks the human to confirm the
+grant and explicitly authorize the displayed operation, account, destination and secret. After that
+submission, the broker rechecks the committed destination and origin, verifies the owner's native
+GitHub CLI identity and repository access, and
 verifies the candidate's identity and reads a commit from each source. GitHub's token API does not
 attest that no additional repositories or permissions were granted.
 
 The broker keeps a dedicated OS-vault enrollment for that destination and secret name. Its endpoints
 serve as probes only. It sends the verified value to `gh secret set` on stdin and checks the secret's
-metadata. If the upload fails after enrollment, the owner can run `tj-credentials publish --name
-private-source-read` to recheck and publish the saved credential. `rotate` uses the same guarded flow
-for a replacement. Run owner commands in a human terminal with the declared login and permission to
-manage that repository's Actions secrets. Agent sessions and credential overrides are refused.
+metadata. If the upload fails after enrollment, the agent starts `tj-credentials publish --name
+private-source-read`. The same guarded local form asks the human to authorize rechecking and publishing
+the saved credential. It binds consent to that enrollment, so a concurrent rotation requires fresh
+consent. `rotate` uses the same guarded flow for a replacement. The owner's existing GitHub CLI
+sign-in must match the declared login and permit managing the destination's Actions secrets.
+Agent markers remain on the broker and its child processes. Credential overrides are refused.
 
 A successful local check verifies the saved credential. The hosted value is write-only. The
 publication receipt confirms the destination accepted the secret and the original workflow's
 successful private fetch establishes that a runner can use it. Upgrade the credential broker before
 committing a declaration that uses a newly supported field.
 
-### Windows owner handoff
+### Human consent and process lifetime
 
-Prepare one desktop shortcut from the action that the broker's check reported. Give the script a
-new local attempt directory. The calling session that owns the user handoff uses `cli:clip` on the
-returned `command_file` when the declaration and installed broker are ready.
+Run the broker directly with the host's process tool. Use a fresh result path in an existing local
+directory when a public process receipt is needed.
 
-```powershell
-& '<access-skill>/scripts/prepare_owner.ps1' -Repository '<destination checkout>' `
-    -Name private-source-read -Operation onboard -AttemptDirectory '<new attempt directory>'
+```text
+tj-credentials onboard --name private-source-read --result-file <new-result-path>
+tj-credentials publish --name private-source-read --result-file <new-result-path>
 ```
 
-The prepared PowerShell `!` command opens a folder containing the single named shortcut.
-The owner double-clicks it to run the installed broker in the destination checkout. This preserves
-the owner's desktop sign-in even when the host marks its user-shell commands as agent processes.
-Keep the issuer and submission flow open while awaiting the owner. On other platforms run the displayed
-owner action in the owner's terminal with `--result-file <new local path>` in an existing directory.
+Keep the process alive while awaiting the human's browser submission. The human performs issuer
+sign-in, grant selection and local submission. Only the broker handles credential values and the
+private form URL. Its output and receipts contain public status. Agents must preserve identity markers
+and leave publication consent to the human in the browser. Opening the form authorizes no owner
+credential access or upload. An abandoned, rejected or expired form authorizes no publication.
 
-Read the returned `result_file` as JSON. A running receipt contains the PID and start time. Match the
+Read the result file as JSON. A running receipt contains the PID and start time. Match the
 process command line to its unique result path and operation before treating it as live. Reopening
-the shortcut preserves the original attempt. A missing receipt indicates no verified start.
+an existing result path preserves the original attempt. A missing receipt indicates no verified start.
 Only `state=complete`, `exit_code=0`, `status=published` and the expected destination confirm
 publication. After a failed or interrupted attempt, diagnose it, run the named check again, and
-prepare a fresh attempt for the action it reports.
+start a fresh attempt for the action it reports.

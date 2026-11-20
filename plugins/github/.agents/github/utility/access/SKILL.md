@@ -42,7 +42,12 @@ Client launchers perform these checks before using the credential and warn seven
 A check proves the declared reads; it does not prove write permissions or every package/image download.
 Actual authorized writes and builds establish that evidence.
 
-For a missing, invalid or expiring credential, run the one displayed `onboard --name` command. It opens the
+For `onboard`, `rotate` and `publish`, starting and monitoring the guarded browser flow is agent work.
+Run the displayed broker command directly with the host's process tool. Issuer sign-in, grant selection,
+publication consent and token entry are human work in the browser. Do not select `cli:clip`, command-file
+handoffs or desktop shortcuts for these supported operations.
+
+For a missing, invalid or expiring credential, the displayed `onboard --name` command opens the
 issuer's creation page and a guarded local submission page. The human selects the declared type, account,
 scopes and expiry, completes any organization approval or SSO, then submits locally. Keep the process alive
 until verification and secure storage complete. A rejected candidate preserves the working enrollment.
@@ -64,8 +69,10 @@ When an Actions job cannot fetch a private source, use the workflow's secret nam
 `actions_secret` declaration, then run `tj-credentials check --name <credential-name>` from the
 destination repository. If absent, add the nonsecret declaration using the
 [declaration contract](references/declarations.md#private-source-reads-in-github-actions).
-When a failed workflow needs a credential, give the owner the displayed onboarding or publication
-command. On Windows, prepare the owner shortcut using the declaration contract's
-[desktop handoff](references/declarations.md#windows-owner-handoff). It uses the existing guarded
-browser form and the owner's GitHub CLI sign-in. After the publication receipt, rerun the failed workflow and verify its private
-fetch. Leave agent Git and gh on their selected identity throughout.
+When a failed workflow needs a credential, start the displayed onboarding or publication command
+yourself from the destination checkout and keep it running. It opens the existing guarded browser
+form for the human's grant selection and publication consent. The
+[browser flow](references/declarations.md#human-consent-and-process-lifetime) binds consent to the
+operation, account, source grants, destination repository and secret. The broker accesses the owner's
+GitHub CLI sign-in only after that consent. Keep agent identity markers intact. After the publication
+receipt, rerun the failed workflow and verify its private fetch.

@@ -1,4 +1,4 @@
-"""Public state for one owner-started enrollment attempt."""
+"""Public state for one credential enrollment or publication attempt."""
 
 from __future__ import annotations
 
