@@ -8,11 +8,18 @@ import urllib.parse
 import webbrowser
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any, override
 
-from credentials.model import CredentialError
+from credentials.model import Credential, CredentialError
 from credentials.service import Service
-from credentials.vault import Secret
+from credentials.vault import Enrollment, Secret, State
+
+
+class Operation(StrEnum):
+    ONBOARD = "onboard"
+    ROTATE = "rotate"
+    PUBLISH = "publish"
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,11 +28,39 @@ class Candidate:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class Request:
+    credential: Credential
+    operation: Operation
+    enrollment: Enrollment | None = None
+
+    def __post_init__(self) -> None:
+        if self.operation == Operation.PUBLISH and (
+            self.credential.actions_secret is None or self.enrollment is None
+        ):
+            raise CredentialError(f"credential-missing: {self.credential.action}")
+
+    def check_enrollment(self, state: State) -> None:
+        if self.operation == Operation.PUBLISH and state.active() != self.enrollment:
+            raise CredentialError("actions-enrollment-changed: reopen onboarding")
+
+
+@dataclass(frozen=True, slots=True)
+class Submission:
+    request: Request
+    candidate: Candidate | None
+
+    def __post_init__(self) -> None:
+        if (self.request.operation == Operation.PUBLISH) != (self.candidate is None):
+            raise CredentialError("credential-submission-invalid: reopen onboarding")
+
+
 class Server(http.server.HTTPServer):
     nonce: str
     service: Service
     now: datetime
-    candidate: Candidate | None = None
+    request: Request
+    submission: Submission | None = None
 
     def get_request(self) -> tuple[Any, Any]:
         connection, address = super().get_request()
@@ -77,22 +112,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
         first = (self.server.now + timedelta(days=1)).date().isoformat()
         instructions = html.escape(service.provider.instructions(service.credential))
+        target = service.credential.actions_secret
         button = (
             "Verify and publish to GitHub Actions"
             if service.credential.actions_secret is not None
             else "Verify and save in the OS vault"
         )
-        self.reply(
-            200,
-            "<!doctype html><title>Credential enrollment</title>"
-            f"<h1>{html.escape(service.credential.name)}</h1><p>{instructions}</p>"
-            '<form method="post"><label>Credential '
+        fields = (
+            "<label>Credential "
             '<input type="password" name="token" autocomplete="off" required>'
             '</label><label>Token expiry <input type="date" name="expires_at" '
             f'min="{first}" max="{last}" value="{last}" required></label>'
             '<label><input type="checkbox" name="confirmed" value="yes" required>'
             "I selected this account, organization, scopes and expiry, "
             "and completed required SSO authorization.</label>"
+        )
+        if self.server.request.operation == Operation.PUBLISH:
+            fields = (
+                "<p>Recheck and publish the credential "
+                "already saved in the OS vault.</p>"
+            )
+        if target is not None:
+            fields += (
+                '<label><input type="checkbox" name="publication" value="yes" required>'
+                f"I authorize {html.escape(self.server.request.operation.value)} "
+                f"using GitHub account {html.escape(service.credential.login)} "
+                f"to replace Actions secret {html.escape(target.name)} in "
+                f"{html.escape(target.repository)} with the credential for "
+                "the source repositories and read permissions listed above.</label>"
+            )
+        self.reply(
+            200,
+            "<!doctype html><title>Credential enrollment</title>"
+            f"<h1>{html.escape(service.credential.name)}</h1><p>{instructions}</p>"
+            f'<form method="post">{fields}'
             f"<button>{button}</button></form>",
         )
 
@@ -101,7 +154,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if (
             not self.allowed()
             or self.headers.get_all("Origin") != [origin]
-            or self.server.candidate is not None
+            or self.server.submission is not None
         ):
             self.reply(403, "Submission rejected")
             return
@@ -118,55 +171,92 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         try:
             body = self.rfile.read(int(lengths[0])).decode("ascii")
-            fields = urllib.parse.parse_qs(body, strict_parsing=True, max_num_fields=3)
+            fields = urllib.parse.parse_qs(body, strict_parsing=True, max_num_fields=4)
+            requested = self.server.request
+            expected = {"token", "expires_at", "confirmed"}
+            if requested.operation == Operation.PUBLISH:
+                expected = set()
+            if requested.credential.actions_secret is not None:
+                expected.add("publication")
             if (
-                set(fields) != {"token", "expires_at", "confirmed"}
+                set(fields) != expected
                 or any(len(values) != 1 for values in fields.values())
-                or fields["confirmed"] != ["yes"]
+                or any(
+                    fields[key] != ["yes"]
+                    for key in expected & {"confirmed", "publication"}
+                )
             ):
                 raise ValueError
-            secret = Secret(fields["token"][0])
-            expires_at = datetime.strptime(fields["expires_at"][0], "%Y-%m-%d").replace(
-                tzinfo=UTC
-            )
-            if (
-                not self.server.now
-                < expires_at
-                <= self.server.now
-                + timedelta(days=self.server.service.credential.expires_in)
-            ):
-                raise ValueError
+            candidate = None
+            if requested.operation != Operation.PUBLISH:
+                secret = Secret(fields["token"][0])
+                expires_at = datetime.strptime(
+                    fields["expires_at"][0], "%Y-%m-%d"
+                ).replace(tzinfo=UTC)
+                if (
+                    not self.server.now
+                    < expires_at
+                    <= self.server.now
+                    + timedelta(days=self.server.service.credential.expires_in)
+                ):
+                    raise ValueError
+                candidate = Candidate(secret, expires_at)
         except (OSError, ValueError, CredentialError):
             self.reply(
-                400, "Submit the credential, its expiry and authorization confirmation"
+                400, "Complete the requested fields and authorization confirmation"
             )
             return
-        self.server.candidate = Candidate(secret, expires_at)
+        self.server.submission = Submission(requested, candidate)
         self.reply(
             200,
-            "<!doctype html><title>Credential received</title>"
-            "<p>Credential received. Check the terminal for verification "
-            "and secure storage results.</p>",
+            "<!doctype html><title>Submission received</title>"
+            "<p>Submission received. The broker will report verification "
+            "and publication results to the calling session.</p>",
         )
 
 
-def receive(service: Service, now: datetime, timeout: float = 900) -> Candidate:
+def receive(
+    service: Service,
+    now: datetime,
+    *,
+    operation: Operation = Operation.ONBOARD,
+    timeout: float = 900,
+) -> Submission:
+    request = Request(
+        service.credential,
+        operation,
+        service.state.active() if operation == Operation.PUBLISH else None,
+    )
     with Server(("127.0.0.1", 0), Handler) as server:
         server.nonce, server.service, server.now = (
             secrets.token_urlsafe(32),
             service,
             now,
         )
+        server.request = request
         server.timeout = 1
-        creation = service.provider.creation_url(service.credential)
         local = f"http://127.0.0.1:{server.server_port}/{server.nonce}"
-        print("Create credential: " + creation, flush=True)
-        print("Submit locally: " + local, flush=True)
-        webbrowser.open(creation)
-        webbrowser.open(local)
+        try:
+            if operation != Operation.PUBLISH and not webbrowser.open(
+                service.provider.creation_url(service.credential)
+            ):
+                raise CredentialError(
+                    "credential-browser-unavailable: configure a default browser"
+                )
+            if not webbrowser.open(local):
+                raise CredentialError(
+                    "credential-browser-unavailable: configure a default browser"
+                )
+        except (OSError, webbrowser.Error):
+            raise CredentialError(
+                "credential-browser-unavailable: could not open onboarding"
+            ) from None
+        print(
+            "Credential browser flow opened; waiting for human submission.", flush=True
+        )
         deadline = time.monotonic() + timeout
-        while server.candidate is None and time.monotonic() < deadline:
+        while server.submission is None and time.monotonic() < deadline:
             server.handle_request()
-        if server.candidate is None:
+        if server.submission is None:
             raise CredentialError("credential-onboarding-timeout: run onboarding again")
-        return server.candidate
+        return server.submission

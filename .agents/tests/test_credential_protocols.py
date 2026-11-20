@@ -4,16 +4,32 @@ import io
 import json
 import threading
 import urllib.parse
+import webbrowser
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from credentials import github_classic, mcp, mcp_release, onboarding
+from credentials import (
+    github_classic,
+    github_fine_grained,
+    mcp,
+    mcp_release,
+    onboarding,
+)
 from credentials.context import Context
-from credentials.model import Client, Credential, Declaration, Endpoint, Provider
+from credentials.model import (
+    ActionsSecret,
+    Client,
+    Credential,
+    CredentialError,
+    Declaration,
+    Endpoint,
+    Provider,
+)
 from credentials.service import Service
-from credentials.vault import State
+from credentials.vault import Enrollment, State
 from test_declared_credentials import GitHub, MemoryVault
 
 NOW = datetime(2026, 11, 17, 12, tzinfo=UTC)
@@ -41,6 +57,7 @@ def local_form(tmp_path: Path) -> Iterator[onboarding.Server]:
     )
     with onboarding.Server(("127.0.0.1", 0), onboarding.Handler) as server:
         server.nonce, server.service, server.now = "fixture-nonce", service, NOW
+        server.request = onboarding.Request(credential, onboarding.Operation.ONBOARD)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -86,8 +103,9 @@ def test_onboarding_receives_candidate_without_echoing_or_logging(
 ) -> None:
     status, body = submit(local_form)
     assert status == 200
-    assert local_form.candidate is not None
-    assert local_form.candidate.secret.value == TOKEN
+    assert local_form.submission is not None
+    assert local_form.submission.candidate is not None
+    assert local_form.submission.candidate.secret.value == TOKEN
     assert TOKEN not in body + str(capsys.readouterr())
     assert local_form.service.state.active() is None
 
@@ -117,7 +135,7 @@ def test_onboarding_rejects_untrusted_or_malformed_submission(
 ) -> None:
     status, body = submit(local_form, **changes)
     assert status in {400, 403}
-    assert local_form.candidate is None
+    assert local_form.submission is None
     assert TOKEN not in body
 
 
@@ -136,6 +154,75 @@ def test_onboarding_page_is_uncached_and_confirms_the_declared_scope(
         assert "Configure SSO" in body
         assert response.getheader("Cache-Control") == "no-store"
         assert response.getheader("Referrer-Policy") == "no-referrer"
+
+
+@pytest.mark.parametrize("operation", tuple(onboarding.Operation))
+@pytest.mark.allow_hosts(["127.0.0.1"])
+def test_hosted_form_requires_publication_consent_and_rejects_replay(
+    local_form: onboarding.Server, operation: onboarding.Operation
+) -> None:
+    credential = Credential(
+        "source-read",
+        Provider.GITHUB_FINE_GRAINED,
+        "Example",
+        "example-user",
+        (),
+        (Endpoint(Client.GIT, "https://github.com/Example/private"),),
+        permissions=(("contents", "read"),),
+        actions_secret=ActionsSecret("Example/catalog", "PRIVATE_SOURCE_READ"),
+    )
+    local_form.service = replace(
+        local_form.service, credential=credential, provider=github_fine_grained
+    )
+    enrollment = Enrollment("a" * 32, NOW + timedelta(days=20))
+    local_form.request = onboarding.Request(
+        credential,
+        operation,
+        enrollment if operation == onboarding.Operation.PUBLISH else None,
+    )
+    fields = {"publication": "yes"}
+    if operation != onboarding.Operation.PUBLISH:
+        fields.update(token=TOKEN, expires_at="2026-12-01", confirmed="yes")
+    for denied in (
+        fields | {"publication": "no"},
+        {key: value for key, value in fields.items() if key != "publication"},
+        fields | {"repository": "Example/other"},
+    ):
+        status = submit(local_form, body=urllib.parse.urlencode(denied))[0]
+        assert (status, local_form.submission) == (400, None)
+    status = submit(
+        local_form,
+        origin="https://evil.invalid",
+        body=urllib.parse.urlencode(fields),
+    )[0]
+    assert (status, local_form.submission) == (403, None)
+    assert submit(local_form, body=urllib.parse.urlencode(fields))[0] == 200
+    submission = local_form.submission
+    assert submission is not None and submission.request == local_form.request
+    assert submit(local_form, body=urllib.parse.urlencode(fields))[0] == 403
+    assert local_form.submission is submission
+
+
+@pytest.mark.allow_hosts(["127.0.0.1"])
+def test_abandoned_form_expires_without_disclosing_its_url(
+    local_form: onboarding.Server,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    opened: list[str] = []
+
+    def open_browser(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(webbrowser, "open", open_browser)
+    with pytest.raises(CredentialError, match="credential-onboarding-timeout"):
+        onboarding.receive(local_form.service, NOW, timeout=0)
+    assert len(opened) == 2
+    output = capsys.readouterr()
+    assert opened[-1] not in output.out + output.err
+    assert urllib.parse.urlsplit(opened[-1]).path not in output.out + output.err
+    assert local_form.service.state.active() is None
 
 
 def mcp_context(tmp_path: Path) -> Context:

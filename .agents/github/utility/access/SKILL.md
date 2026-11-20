@@ -64,8 +64,10 @@ When an Actions job cannot fetch a private source, use the workflow's secret nam
 `actions_secret` declaration, then run `tj-credentials check --name <credential-name>` from the
 destination repository. If absent, add the nonsecret declaration using the
 [declaration contract](references/declarations.md#private-source-reads-in-github-actions).
-When a failed workflow needs a credential, give the owner the displayed onboarding or publication
-command. On Windows, prepare the owner shortcut using the declaration contract's
-[desktop handoff](references/declarations.md#windows-owner-handoff). It uses the existing guarded
-browser form and the owner's GitHub CLI sign-in. After the publication receipt, rerun the failed workflow and verify its private
-fetch. Leave agent Git and gh on their selected identity throughout.
+When a failed workflow needs a credential, start the displayed onboarding or publication command
+yourself from the destination checkout and keep it running. It opens the existing guarded browser
+form for the human's grant selection and publication consent. The
+[browser flow](references/declarations.md#human-consent-and-process-lifetime) binds consent to the
+operation, account, source grants, destination repository and secret. The broker accesses the owner's
+GitHub CLI sign-in only after that consent. Keep agent identity markers intact. After the publication
+receipt, rerun the failed workflow and verify its private fetch.
