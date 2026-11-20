@@ -30,6 +30,7 @@ from credentials.model import (
 )
 from credentials.service import Service
 from credentials.vault import Enrollment, State
+from playwright import sync_api
 from test_declared_credentials import GitHub, MemoryVault
 
 NOW = datetime(2026, 11, 17, 12, tzinfo=UTC)
@@ -74,6 +75,7 @@ def submit(
     origin: str | None = None,
     path: str = "/fixture-nonce",
     body: str | None = None,
+    content_length: str | None = None,
 ) -> tuple[int, str]:
     local = f"127.0.0.1:{server.server_port}"
     headers = {
@@ -81,6 +83,8 @@ def submit(
         "Origin": origin or "http://" + local,
         "Content-Type": "application/x-www-form-urlencoded",
     }
+    if content_length is not None:
+        headers["Content-Length"] = content_length
     if body is None:
         body = urllib.parse.urlencode(
             {
@@ -113,13 +117,13 @@ def test_onboarding_receives_candidate_without_echoing_or_logging(
 @pytest.mark.parametrize(
     "changes",
     [
-        {"host": "evil.invalid"},
-        {"origin": "https://evil.invalid"},
-        {"origin": "null"},
-        {"path": "/other"},
+        {"host": "evil.invalid", "body": ""},
+        {"origin": "https://evil.invalid", "body": ""},
+        {"origin": "null", "body": ""},
+        {"path": "/other", "body": ""},
         {"body": "token=" + TOKEN},
         {"body": "token=" + TOKEN + "&confirmed=no"},
-        {"body": "x" * 9000},
+        {"body": "", "content_length": "9000"},
         {
             "body": "token="
             + TOKEN
@@ -153,14 +157,11 @@ def test_onboarding_page_is_uncached_and_confirms_the_declared_scope(
         assert "Example" in body and "read:packages" in body
         assert "Configure SSO" in body
         assert response.getheader("Cache-Control") == "no-store"
-        assert response.getheader("Referrer-Policy") == "no-referrer"
+        assert response.getheader("Referrer-Policy") == "strict-origin"
 
 
-@pytest.mark.parametrize("operation", tuple(onboarding.Operation))
-@pytest.mark.allow_hosts(["127.0.0.1"])
-def test_hosted_form_requires_publication_consent_and_rejects_replay(
-    local_form: onboarding.Server, operation: onboarding.Operation
-) -> None:
+@pytest.fixture
+def hosted_form(local_form: onboarding.Server) -> onboarding.Server:
     credential = Credential(
         "source-read",
         Provider.GITHUB_FINE_GRAINED,
@@ -174,9 +175,45 @@ def test_hosted_form_requires_publication_consent_and_rejects_replay(
     local_form.service = replace(
         local_form.service, credential=credential, provider=github_fine_grained
     )
+    local_form.request = onboarding.Request(credential, onboarding.Operation.ONBOARD)
+    return local_form
+
+
+@pytest.mark.allow_hosts(["127.0.0.1"])
+def test_chrome_can_submit_the_guarded_form(hosted_form: onboarding.Server) -> None:
+    with sync_api.sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(channel="chrome")
+        except sync_api.Error as error:
+            if "distribution 'chrome' is not found" in str(error):
+                pytest.skip("Google Chrome is unavailable for browser acceptance")
+            raise
+        with browser:
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{hosted_form.server_port}/fixture-nonce")
+            page.get_by_label("Credential", exact=True).fill(TOKEN)
+            page.get_by_label("I selected this account", exact=False).check()
+            page.get_by_label("I authorize onboard", exact=False).check()
+            with page.expect_navigation() as navigation:
+                page.get_by_role("button", name="Verify and publish").click()
+            response = navigation.value
+            assert response is not None
+            assert response.status == 200
+            assert page.title() == "Submission received"
+    assert hosted_form.submission is not None
+    assert hosted_form.submission.candidate is not None
+    assert hosted_form.submission.candidate.secret.value == TOKEN
+
+
+@pytest.mark.parametrize("operation", tuple(onboarding.Operation))
+@pytest.mark.allow_hosts(["127.0.0.1"])
+def test_hosted_form_requires_publication_consent_and_rejects_replay(
+    hosted_form: onboarding.Server, operation: onboarding.Operation
+) -> None:
+    local_form = hosted_form
     enrollment = Enrollment("a" * 32, NOW + timedelta(days=20))
     local_form.request = onboarding.Request(
-        credential,
+        local_form.service.credential,
         operation,
         enrollment if operation == onboarding.Operation.PUBLISH else None,
     )
