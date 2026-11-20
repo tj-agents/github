@@ -42,7 +42,12 @@ Client launchers perform these checks before using the credential and warn seven
 A check proves the declared reads; it does not prove write permissions or every package/image download.
 Actual authorized writes and builds establish that evidence.
 
-For a missing, invalid or expiring credential, run the one displayed `onboard --name` command. It opens the
+For `onboard`, `rotate` and `publish`, starting and monitoring the guarded browser flow is agent work.
+Run the displayed broker command directly with the host's process tool. Issuer sign-in, grant selection,
+publication consent and token entry are human work in the browser. Do not select `cli:clip`, command-file
+handoffs or desktop shortcuts for these supported operations.
+
+For a missing, invalid or expiring credential, the displayed `onboard --name` command opens the
 issuer's creation page and a guarded local submission page. The human selects the declared type, account,
 scopes and expiry, completes any organization approval or SSO, then submits locally. Keep the process alive
 until verification and secure storage complete. A rejected candidate preserves the working enrollment.
