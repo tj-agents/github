@@ -15,6 +15,29 @@ from credentials.model import Credential, CredentialError
 from credentials.service import Service
 from credentials.vault import Enrollment, Secret, State
 
+FORM_STYLE = """<style>
+  :root { color-scheme: light dark; }
+  body {
+    max-width: 42rem;
+    margin: 3rem auto;
+    padding: 0 1rem;
+    font: 1rem/1.5 system-ui, sans-serif;
+  }
+  h1 { font-size: 1.5rem; }
+  form, .field { display: grid; gap: .5rem; }
+  form { gap: 1rem; }
+  input, button { font: inherit; }
+  .field input { box-sizing: border-box; max-width: 100%; padding: .4rem; }
+  .confirmation {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    gap: .5rem;
+  }
+  .confirmation input { margin: 0; }
+  button { justify-self: start; padding: .4rem .8rem; }
+</style>"""
+
 
 class Operation(StrEnum):
     ONBOARD = "onboard"
@@ -85,11 +108,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # A form POST needs its Origin header. The referrer omits the nonce path.
+        self.send_header("Referrer-Policy", "strict-origin")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'none'; form-action 'self'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'unsafe-inline'; "
+            "form-action 'self'; frame-ancestors 'none'",
         )
         self.end_headers()
         self.wfile.write(content)
@@ -119,13 +144,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else "Verify and save in the OS vault"
         )
         fields = (
-            "<label>Credential "
+            '<label class="field">Credential'
             '<input type="password" name="token" autocomplete="off" required>'
-            '</label><label>Token expiry <input type="date" name="expires_at" '
+            '</label><label class="field">Token expiry'
+            '<input type="date" name="expires_at" '
             f'min="{first}" max="{last}" value="{last}" required></label>'
-            '<label><input type="checkbox" name="confirmed" value="yes" required>'
+            '<label class="confirmation">'
+            '<input type="checkbox" name="confirmed" value="yes" required>'
+            "<span>"
             "I selected this account, organization, scopes and expiry, "
-            "and completed required SSO authorization.</label>"
+            "and completed required SSO authorization.</span></label>"
         )
         if self.server.request.operation == Operation.PUBLISH:
             fields = (
@@ -134,19 +162,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             )
         if target is not None:
             fields += (
-                '<label><input type="checkbox" name="publication" value="yes" required>'
+                '<label class="confirmation">'
+                '<input type="checkbox" name="publication" value="yes" required>'
+                "<span>"
                 f"I authorize {html.escape(self.server.request.operation.value)} "
                 f"using GitHub account {html.escape(service.credential.login)} "
                 f"to replace Actions secret {html.escape(target.name)} in "
                 f"{html.escape(target.repository)} with the credential for "
-                "the source repositories and read permissions listed above.</label>"
+                "the source repositories and read permissions listed above."
+                "</span></label>"
             )
         self.reply(
             200,
-            "<!doctype html><title>Credential enrollment</title>"
+            '<!doctype html><html lang="en"><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            "<title>Credential enrollment</title>"
+            f"{FORM_STYLE}<main>"
             f"<h1>{html.escape(service.credential.name)}</h1><p>{instructions}</p>"
             f'<form method="post">{fields}'
-            f"<button>{button}</button></form>",
+            f"<button>{button}</button></form></main></html>",
         )
 
     def do_POST(self) -> None:
